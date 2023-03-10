@@ -9,6 +9,8 @@ from torch.autograd import Variable
 import time
 import logging
 
+import sys
+
 import mpi
 
 def test(args, shared_model, env_conf):
@@ -55,11 +57,14 @@ def test(args, shared_model, env_conf):
         if msg == 'global_model':
             global_parameters = payload.copy()
             player.model.load_state_dict(global_parameters)
-            print('test model updates')
+            #print('test model updates')
         elif msg == 'stop':
             sys.exit(0)
         else:
             raise NotImplementedError(msg)
+
+        #print('testing for',args.test_steps)
+        #print('first param', player.model.state_dict()['actor_linear.weight'])
 
         for i in range(args.test_steps):
             if flag:

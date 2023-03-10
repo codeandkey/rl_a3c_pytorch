@@ -33,13 +33,13 @@ def scheduler(args, shared_model, env_conf):
         # send global model to requesting clients
         elif msg == 'get_global_model':
             source = payload
-            parameters = global_model.state_dict().copy()
+            parameters = global_parameters.copy()
             mpi.comm.send(('global_model', parameters), dest=source)
 
         # update local client model list
         elif msg == 'update_client_model':
             source, client_model = payload
-            client_parameters[source] = payload
+            client_parameters[source] = client_model
 
         # update global parameters, with some midpoint weight
         elif msg == 'update_global_model':
@@ -49,7 +49,7 @@ def scheduler(args, shared_model, env_conf):
                 # the client is equal, we get the exact midpoint
                 potential = 0
             elif start + length > global_age:
-                print(start, length, global_age)
+                #print(start, length, global_age)
                 # the client is older, have 1 <=> client twice as old
                 potential = (start + length) / max(1, global_age - start) - 1
             else:
@@ -75,14 +75,15 @@ def scheduler(args, shared_model, env_conf):
                 cv = params[k] * client_wt
                 gv = global_parameters[k] * global_wt
 
-                cv = cv.cpu()
-                gv = gv.cpu()
+                cv = cv.cpu().numpy()
 
                 #new_global_params[k] = cv + gv
                 new_global_params[k] = global_parameters[k] + delta[k]
 
+                #print('from', global_parameters[k], 'to', new_global_params[k])
+
             global_parameters = new_global_params
-            print('global model updates')
+            #print('global model updates')
             #print(global_parameters[kk])
 
             # be optimistic about the true global age (TODO this needs verifying)

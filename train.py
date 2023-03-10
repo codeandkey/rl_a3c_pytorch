@@ -72,7 +72,10 @@ def train(args, shared_model, env_conf):
 
         last_global = global_parameters.copy()
 
-        print(mpi.rank, 'training for', length)
+        # ensure new parameters are optimized
+        optimizer.param_groups[0]['params'] = player.model.parameters()
+
+        #print(mpi.rank, 'training for', length)
 
         while total_steps < length:
 
