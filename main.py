@@ -9,9 +9,13 @@ from utils import read_config
 from model import A3Clstm
 from train import train
 from test import test
+from scheduler import scheduler
 from shared_optim import SharedRMSprop, SharedAdam
+import sys
 #from gym.configuration import undo_logger_setup
 import time
+
+import mpi
 
 #undo_logger_setup()
 parser = argparse.ArgumentParser(description='A3C')
@@ -39,6 +43,21 @@ parser.add_argument(
     default=1,
     metavar='S',
     help='random seed (default: 1)')
+parser.add_argument(
+    '--min_offline_steps',
+    type=int,
+    default=1000,
+    help='lower bound for offline steps (default: 1000)')
+parser.add_argument(
+    '--max_offline_steps',
+    type=int,
+    default=10000,
+    help='upper bound for offline steps (default: 10000)')
+parser.add_argument(
+    '--test_steps',
+    type=int,
+    default=1000,
+    help='steps between test model updates (default: 1000)')
 parser.add_argument(
     '--workers',
     type=int,
@@ -152,18 +171,13 @@ if __name__ == '__main__':
     else:
         optimizer = None
 
-    processes = []
+    # scheduler thread
+    if mpi.rank == 0:
+        sys.exit(scheduler(args, shared_model, env_conf))
 
-    p = mp.Process(target=test, args=(args, shared_model, env_conf))
-    p.start()
-    processes.append(p)
-    time.sleep(0.1)
-    for rank in range(0, args.workers):
-        p = mp.Process(
-            target=train, args=(rank, args, shared_model, optimizer, env_conf))
-        p.start()
-        processes.append(p)
-        time.sleep(0.1)
-    for p in processes:
-        time.sleep(0.1)
-        p.join()
+    # testing thread
+    if mpi.rank == 1:
+        sys.exit(test(args, shared_model, env_conf))
+
+    # spawn workers
+    sys.exit(train(args, shared_model, env_conf))

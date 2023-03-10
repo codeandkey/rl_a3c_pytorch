@@ -9,6 +9,7 @@ from torch.autograd import Variable
 import time
 import logging
 
+import mpi
 
 def test(args, shared_model, env_conf):
     ptitle('Test Agent')
@@ -44,56 +45,72 @@ def test(args, shared_model, env_conf):
             player.state = player.state.cuda()
     flag = True
     max_score = 0
+    total_steps = 0
     while True:
-        if flag:
-            if gpu_id >= 0:
-                with torch.cuda.device(gpu_id):
-                    player.model.load_state_dict(shared_model.state_dict())
-            else:
-                player.model.load_state_dict(shared_model.state_dict())
-            player.model.eval()
-            flag = False
+        # get global model from scheduler
+        mpi.comm.send(('get_global_model', mpi.rank), dest=0)
 
-        player.action_test()
-        reward_sum += player.reward
+        msg, payload = mpi.comm.recv(source=0)
 
-        if player.done and not player.info:
-            state = player.env.reset()
-            player.eps_len += 2
-            player.state = torch.from_numpy(state).float()
-            if gpu_id >= 0:
-                with torch.cuda.device(gpu_id):
-                    player.state = player.state.cuda()
-        elif player.info:
-            flag = True
-            num_tests += 1
-            reward_total_sum += reward_sum
-            reward_mean = reward_total_sum / num_tests
-            log['{}_log'.format(args.env)].info(
-                "Time {0}, episode reward {1}, episode length {2}, reward mean {3:.4f}".
-                format(
-                    time.strftime("%Hh %Mm %Ss",
-                                  time.gmtime(time.time() - start_time)),
-                    reward_sum, player.eps_len, reward_mean))
+        if msg == 'global_model':
+            global_parameters = payload.copy()
+            player.model.load_state_dict(global_parameters)
+            print('test model updates')
+        elif msg == 'stop':
+            sys.exit(0)
+        else:
+            raise NotImplementedError(msg)
 
-            if args.save_max and reward_sum >= max_score:
-                max_score = reward_sum
+        for i in range(args.test_steps):
+            if flag:
                 if gpu_id >= 0:
                     with torch.cuda.device(gpu_id):
+                        player.model.load_state_dict(shared_model.state_dict())
+                else:
+                    player.model.load_state_dict(shared_model.state_dict())
+                player.model.eval()
+                flag = False
+
+            player.action_test()
+            reward_sum += player.reward
+
+            if player.done and not player.info:
+                state = player.env.reset()
+                player.eps_len += 2
+                player.state = torch.from_numpy(state).float()
+                if gpu_id >= 0:
+                    with torch.cuda.device(gpu_id):
+                        player.state = player.state.cuda()
+            elif player.info:
+                flag = True
+                num_tests += 1
+                reward_total_sum += reward_sum
+                reward_mean = reward_total_sum / num_tests
+                log['{}_log'.format(args.env)].info(
+                    "Time {0}, episode reward {1}, episode length {2}, reward mean {3:.4f}".
+                    format(
+                        time.strftime("%Hh %Mm %Ss",
+                                      time.gmtime(time.time() - start_time)),
+                        reward_sum, player.eps_len, reward_mean))
+
+                if args.save_max and reward_sum >= max_score:
+                    max_score = reward_sum
+                    if gpu_id >= 0:
+                        with torch.cuda.device(gpu_id):
+                            state_to_save = player.model.state_dict()
+                            torch.save(state_to_save, '{0}{1}.dat'.format(
+                                args.save_model_dir, args.env))
+                    else:
                         state_to_save = player.model.state_dict()
                         torch.save(state_to_save, '{0}{1}.dat'.format(
                             args.save_model_dir, args.env))
-                else:
-                    state_to_save = player.model.state_dict()
-                    torch.save(state_to_save, '{0}{1}.dat'.format(
-                        args.save_model_dir, args.env))
 
-            reward_sum = 0
-            player.eps_len = 0
-            state = player.env.reset()
-            player.eps_len += 2
-            time.sleep(10)
-            player.state = torch.from_numpy(state).float()
-            if gpu_id >= 0:
-                with torch.cuda.device(gpu_id):
-                    player.state = player.state.cuda()
+                reward_sum = 0
+                player.eps_len = 0
+                state = player.env.reset()
+                player.eps_len += 2
+                time.sleep(10)
+                player.state = torch.from_numpy(state).float()
+                if gpu_id >= 0:
+                    with torch.cuda.device(gpu_id):
+                        player.state = player.state.cuda()
