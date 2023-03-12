@@ -65,10 +65,10 @@ def scheduler(args, shared_model, env_conf):
             elif start + length > global_age:
                 #print(start, length, global_age)
                 # the client is older, have 1 <=> client twice as old
-                potential = (start + length) / max(1, global_age - start) - 1
+                potential = -1 + (start + length) / max(1, global_age)
             else:
                 # the client is younger, have -1 <=> client twice as young
-                potential = 1 + -(global_age - start) / (start + length)
+                potential = 1 + -global_age / max(start + length, 1)
 
             # activate potential, scale between -1 (global only) and 1 (client only)
             potential = np.tanh(potential)
