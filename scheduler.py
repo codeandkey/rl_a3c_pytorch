@@ -41,6 +41,20 @@ def scheduler(args, shared_model, env_conf):
             source, client_model = payload
             client_parameters[source] = client_model
 
+        # retrieve a random past client model
+        elif msg == 'get_random_client_model':
+            source = payload
+
+            available_params = [c for i, c in enumerate(client_parameters) if i != source]
+            available_params = [p for p in available_params if p is not None]
+
+            if len(available_params) > 0:
+                response_params = np.random.choice(available_params)
+            else:
+                response_params = None
+
+            mpi.comm.send(('random_client_model', response_params), dest=source)
+
         # update global parameters, with some midpoint weight
         elif msg == 'update_global_model':
             start, length, params, delta = payload
