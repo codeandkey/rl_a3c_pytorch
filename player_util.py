@@ -22,9 +22,26 @@ class Agent(object):
         self.reward = 0
         self.gpu_id = -1
 
-    def action_train(self):
-        value, logit, (self.hx, self.cx) = self.model((Variable(
-            self.state.unsqueeze(0)), (self.hx, self.cx)))
+    def action_train(self, args, assist_models=None):
+        # construct model input
+
+        # this could be a problem. model needs hx, cx LSTM input, but we have
+        # no cache-model memory available.... should we just zero it?
+        state_input = Variable(self.state.unsqueeze(0))
+        lstm_input = (self.hx, self.cx)
+
+        value, logit, (self.hx, self.cx) = self.model((state_input, lstm_input))
+
+        if assist_models is not None and len(assist_models) > 0:
+            assist_lstm_input = (torch.zeros_like(lstm_input[0]), torch.zeros_like(lstm_input[1]))
+            assist_logit = 0
+
+            for m in assist_models:
+                assist_logit += m((state_input, assist_lstm_input))[1]
+
+            assist_logit /= len(assist_models)
+            logit = logit * (1 - args.cache_assist_wt) + args.cache_assist_wt * assist_logit
+
         prob = F.softmax(logit, dim=1)
         log_prob = F.log_softmax(logit, dim=1)
         entropy = -(log_prob * prob).sum(1)
