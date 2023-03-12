@@ -1,0 +1,20 @@
+#!/bin/sh
+
+#SBATCH --mem=256G
+#SBATCH --tasks=64
+#SBATCH --array=0-2
+#SBATCH --time=1-
+
+#SBATCH --output=output/%x-%A-%a.out
+#SBATCH --error=output/%x-%A-%a.err
+#SBATCH --job-name="dnorm"
+
+module load singularity 
+
+cd /work/LAS/jannesar-lab/jtst/rl2
+
+singularity exec rl.img mpirun python3 main.py \
+    --experiment=$SLURM_JOB_NAME \
+    --method=potential_delta_norm  \
+    --test_steps=100 \
+    $(python3 factorial.py $SLURM_ARRAY_TASK_ID max_offline_step=20,50,100) $@
