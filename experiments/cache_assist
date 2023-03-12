@@ -1,0 +1,23 @@
+#!/bin/sh
+
+#SBATCH --mem=256G
+#SBATCH --tasks=64
+#SBATCH --array=0-2
+#SBATCH --time=1-
+
+#SBATCH --output=output/%x-%A-%a.out
+#SBATCH --error=output/%x-%A-%a.err
+#SBATCH --job-name="cassist"
+
+module load singularity 
+
+cd /work/LAS/jannesar-lab/jtst/rl2
+
+singularity exec rl.img mpirun python3 main.py \
+    --experiment=$SLURM_JOB_NAME \
+    --method=potential_delta_full \
+    --test_steps=100 \
+    --min_offline_steps=20 \
+    --max_offline_steps=150 \
+    --cache=4 \
+    $(python3 factorial.py $SLURM_ARRAY_TASK_ID cache_assist_wt=0.01,0.03,0.1) $@
