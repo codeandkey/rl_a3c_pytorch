@@ -54,6 +54,16 @@ parser.add_argument(
     default=10000,
     help='upper bound for offline steps (default: 10000)')
 parser.add_argument(
+    '--cache',
+    type=int,
+    default=0,
+    help='number of local client models to keep')
+parser.add_argument(
+    '--cache_assist_wt',
+    type=float,
+    default=0.05,
+    help='local model cache pre-softmax application factor')
+parser.add_argument(
     '--test_steps',
     type=int,
     default=1000,
@@ -61,7 +71,7 @@ parser.add_argument(
 parser.add_argument(
     '--workers',
     type=int,
-    default=32,
+    default=mpi.size - 2,
     metavar='W',
     help='how many training processes to use (default: 32)')
 parser.add_argument(
