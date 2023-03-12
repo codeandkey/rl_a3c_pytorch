@@ -40,6 +40,8 @@ def train(args, shared_model, env_conf):
 
     updated_model = False
     last_global = {}
+    model_cache = [A3Clstm(player.env.observation_space.shape[0], player.env.action_space) for _ in range(args.cache)]
+    
     start = 0
     length = 0
 
@@ -50,6 +52,18 @@ def train(args, shared_model, env_conf):
             delta = { k: params[k].cpu() - last_global[k].cpu() for k in params.keys() }
 
             mpi.comm.send(('update_global_model', (start, length, params, delta)), dest=0)
+
+        # reload cache
+        if args.cache > 0:
+            for i in range(args.cache):
+                mpi.comm.send(('get_random_client_model', mpi.rank), dest=0)
+
+                msg, payload = mpi.comm.recv(source=0)
+
+                if msg != 'random_client_model':
+                    raise RuntimeError('unexpected ' + msg)
+
+                model_cache[i].load_state_dict(payload)
 
         # get schedule step
         mpi.comm.send(('schedule', mpi.rank), dest=0)
@@ -92,7 +106,7 @@ def train(args, shared_model, env_conf):
                 player.hx = Variable(player.hx.data)
 
             for step in range(args.num_steps):
-                player.action_train()
+                player.action_train(args, assist_models=model_cache)
                 total_steps += 1
                 if player.done or total_steps >= length:
                     break
