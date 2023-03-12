@@ -7,7 +7,7 @@
 
 #SBATCH --output=output/%x-%A-%a.out
 #SBATCH --error=output/%x-%A-%a.err
-#SBATCH --job-name="offline_range"
+#SBATCH --job-name="dfull"
 
 module load singularity 
 
@@ -18,4 +18,4 @@ singularity exec rl.img mpirun python3 main.py \
     --method=potential_delta_full \
     --test_steps=100 \
     --min_offline_steps=20 \
-    $(python3 factorial.py $SLURM_ARRAY_TASK_ID max_offline_steps=50,150,300) $@
+    $(python3 factorial.py $SLURM_ARRAY_TASK_ID max_offline_steps=21,50,100) $@
