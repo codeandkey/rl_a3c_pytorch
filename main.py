@@ -103,11 +103,31 @@ parser.add_argument(
     default='Adam',
     metavar='OPT',
     help='shares optimizer choice of Adam or RMSprop')
+
+parser.add_argument(
+    '--experiment',
+    default=None,
+    help='the parent experiment name (default: none)')
+
+parser.add_argument(
+    '--name',
+    default=None,
+    help='the run name (default: [environment name])')
 parser.add_argument(
     '--load-model-dir',
     default='trained_models/',
     metavar='LMD',
     help='folder to load trained models from')
+parser.add_argument(
+    '--method',
+    default='potential_delta_full',
+    help='aggregation strategy')
+
+parser.add_argument(
+    '--potential_mdp_cap',
+    default=0.25,
+    type=float,
+    help='potential midpoint upper bound client wt')
 parser.add_argument(
     '--save-model-dir',
     default='trained_models/',

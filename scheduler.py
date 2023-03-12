@@ -34,7 +34,7 @@ def scheduler(args, shared_model, env_conf):
         elif msg == 'get_global_model':
             source = payload
             parameters = global_parameters.copy()
-            mpi.comm.send(('global_model', parameters), dest=source)
+            mpi.comm.send(('global_model', (parameters, global_age)), dest=source)
 
         # update local client model list
         elif msg == 'update_client_model':
@@ -59,26 +59,33 @@ def scheduler(args, shared_model, env_conf):
             # activate potential, scale between -1 (global only) and 1 (client only)
             potential = np.tanh(potential)
 
-            potential = 0.5
+            #potential = 0.5
+            #print('update potential', potential)
 
             # use as linear weight
             client_wt = (potential + 1) / 2
-            global_wt = 1 - client_wt
+
+            # don't allow single clients to drastically change the model
+            client_wt = min(args.potential_mdp_cap, client_wt)
 
             new_global_params = {}
+            global_wt = 1 - client_wt
 
             #print('global model will update')
             kk = list(delta.keys())[0]
             #print(global_parameters[kk], delta[kk])
 
             for k in global_parameters.keys():
-                cv = params[k] * client_wt
-                gv = global_parameters[k] * global_wt
+                if args.method == 'potential_delta_full':
+                    new_global_params[k] = global_parameters[k] + delta[k]
+                elif args.method == 'potential_midpoint':
+                    cv = params[k] * client_wt
+                    gv = global_parameters[k] * global_wt
 
-                cv = cv.cpu().numpy()
-
-                #new_global_params[k] = cv + gv
-                new_global_params[k] = global_parameters[k] + delta[k]
+                    cv = cv.cpu()
+                    new_global_params[k] = cv + gv
+                else:
+                    raise NotImplementedError(args.method)
 
                 #print('from', global_parameters[k], 'to', new_global_params[k])
 

@@ -10,6 +10,7 @@ import time
 import logging
 
 import sys
+import os
 
 import mpi
 
@@ -24,6 +25,16 @@ def test(args, shared_model, env_conf):
     d_args = vars(args)
     for k in d_args.keys():
         log['{}_log'.format(args.env)].info('{0}: {1}'.format(k, d_args[k]))
+
+    # initialize output files
+
+    basepath = 'results/'
+
+    if args.experiment is not None:
+        basepath += args.experiment + '/'
+
+    os.makedirs(basepath, exist_ok=True)
+    outpath = basepath + args.name
 
     torch.manual_seed(args.seed)
     if gpu_id >= 0:
@@ -48,6 +59,8 @@ def test(args, shared_model, env_conf):
     flag = True
     max_score = 0
     total_steps = 0
+    test_results = []
+    test_ages = []
     while True:
         # get global model from scheduler
         mpi.comm.send(('get_global_model', mpi.rank), dest=0)
@@ -55,8 +68,8 @@ def test(args, shared_model, env_conf):
         msg, payload = mpi.comm.recv(source=0)
 
         if msg == 'global_model':
-            global_parameters = payload.copy()
-            player.model.load_state_dict(global_parameters)
+            global_parameters, global_age  = payload
+            player.model.load_state_dict(global_parameters.copy())
             #print('test model updates')
         elif msg == 'stop':
             sys.exit(0)
@@ -91,6 +104,13 @@ def test(args, shared_model, env_conf):
                 num_tests += 1
                 reward_total_sum += reward_sum
                 reward_mean = reward_total_sum / num_tests
+                #reward_mean = sum(test_results[-args.window:]) / len(test_results[-args.window:])
+                test_results.append(reward_sum)
+                test_ages.append(global_age)
+
+                with open(outpath, 'w') as f:
+                    f.write(str([test_ages, test_results]))
+
                 log['{}_log'.format(args.env)].info(
                     "Time {0}, episode reward {1}, episode length {2}, reward mean {3:.4f}".
                     format(
