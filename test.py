@@ -112,7 +112,7 @@ def test(args, shared_model, env_conf):
                     f.write(str([test_ages, test_results]))
 
                 log['{}_log'.format(args.env)].info(
-                    "Time {0}, episode reward {1}, episode length {2}, reward mean {3:.4f}".
+                    "Time {0}, ep reward {1}, ep length {2}, reward mean {3:.4f}".
                     format(
                         time.strftime("%Hh %Mm %Ss",
                                       time.gmtime(time.time() - start_time)),
