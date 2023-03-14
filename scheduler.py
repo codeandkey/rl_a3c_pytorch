@@ -89,6 +89,10 @@ def scheduler(args, shared_model, env_conf):
             kk = list(delta.keys())[0]
             #print(global_parameters[kk], delta[kk])
 
+            # for discarding method, drop off less relevant weight updates
+            # used only in discard method
+            discard_wt = 1 / (global_age - (start + length)) if start + length < global_age else 1
+
             for k in global_parameters.keys():
                 if args.method == 'potential_delta_full':
                     new_global_params[k] = global_parameters[k] + delta[k]
@@ -100,6 +104,8 @@ def scheduler(args, shared_model, env_conf):
 
                     cv = cv.cpu()
                     new_global_params[k] = cv + gv
+                elif args.method == 'potential_discard':
+                    new_global_params[k] = global_parameters[k] + delta[k] * discard_wt
                 else:
                     raise NotImplementedError(args.method)
 
