@@ -115,7 +115,7 @@ for source in args.sources:
                 data_Y, 
                 data_color + '-',
                 alpha=0.7,
-                label=basename(source))
+                label=(source))
     else:
         lines[source], = ax.plot(data_X,
                 data_Y, 
@@ -125,7 +125,7 @@ for source in args.sources:
         mean_lines[source], = ax.plot(data_X,
                 mean_Y,
                 data_color + '-', alpha=0.7,
-                label=basename(source))
+                label=(source))
 
 ax.legend()
 
