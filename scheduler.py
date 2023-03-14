@@ -98,6 +98,8 @@ def scheduler(args, shared_model, env_conf):
                     new_global_params[k] = global_parameters[k] + delta[k]
                 elif args.method == 'potential_delta_norm':
                     new_global_params[k] = global_parameters[k] + delta[k] / length
+                elif args.method == 'potential_delta_age':
+                    new_global_params[k] = global_parameters[k] + delta[k] * client_wt
                 elif args.method == 'potential_midpoint':
                     cv = params[k] * client_wt
                     gv = global_parameters[k] * global_wt
