@@ -12,7 +12,6 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
-from os.path import basename
 
 parser = argparse.ArgumentParser(description='Experiment result viewer')
 
