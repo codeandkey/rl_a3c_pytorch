@@ -91,7 +91,7 @@ def scheduler(args, shared_model, env_conf):
 
             # for discarding method, drop off less relevant weight updates
             # used only in discard method
-            discard_wt = 1 / (global_age - (start + length)) if start + length < global_age else 1
+            discard_wt = (start + length) / global_age if start + length < global_age else 1
 
             for k in global_parameters.keys():
                 if args.method == 'potential_delta_full':
