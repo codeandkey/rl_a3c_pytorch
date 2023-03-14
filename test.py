@@ -106,7 +106,13 @@ def test(args, shared_model, env_conf):
                 reward_mean = reward_total_sum / num_tests
                 #reward_mean = sum(test_results[-args.window:]) / len(test_results[-args.window:])
                 test_results.append(reward_sum)
-                test_ages.append(global_age)
+
+                x_value = global_age
+
+                if args.by_time:
+                    x_value = (time.time() - start_time) / 3600
+
+                test_ages.append(x_value)
 
                 with open(outpath, 'w') as f:
                     f.write(str([test_ages, test_results]))

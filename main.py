@@ -32,6 +32,11 @@ parser.add_argument(
     metavar='G',
     help='discount factor for rewards (default: 0.99)')
 parser.add_argument(
+    '--by-time',
+    default=False,
+    action='store_true',
+    help='record results by hours instead of eps')
+parser.add_argument(
     '--tau',
     type=float,
     default=1.00,
