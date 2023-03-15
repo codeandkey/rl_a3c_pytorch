@@ -93,6 +93,9 @@ def scheduler(args, shared_model, env_conf):
             # used only in discard method
             discard_wt = (start + length) / global_age if start + length < global_age else 1
 
+            # discarding relative to the start age
+            discard_rel_wt = length / (global_age - start) if start + length < global_age else 1
+
             for k in global_parameters.keys():
                 if args.method == 'potential_delta_full':
                     new_global_params[k] = global_parameters[k] + delta[k]
@@ -108,6 +111,8 @@ def scheduler(args, shared_model, env_conf):
                     new_global_params[k] = cv + gv
                 elif args.method == 'potential_discard':
                     new_global_params[k] = global_parameters[k] + delta[k] * discard_wt
+                elif args.method == 'discard_rel':
+                    new_global_params[k] = global_parameters[k] + delta[k] * discard_rel_wt
                 else:
                     raise NotImplementedError(args.method)
 
