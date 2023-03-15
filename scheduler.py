@@ -110,8 +110,10 @@ def scheduler(args, shared_model, env_conf):
                     cv = cv.cpu()
                     new_global_params[k] = cv + gv
                 elif args.method == 'potential_discard':
+                    #print('merging wt', discard_wt)
                     new_global_params[k] = global_parameters[k] + delta[k] * discard_wt
                 elif args.method == 'discard_rel':
+                    #print('merging wt', discard_rel_wt, flush=True)
                     new_global_params[k] = global_parameters[k] + delta[k] * discard_rel_wt
                 else:
                     raise NotImplementedError(args.method)
@@ -122,9 +124,13 @@ def scheduler(args, shared_model, env_conf):
             #print('global model updates')
             #print(global_parameters[kk])
 
+            # NOTE: potential_discard has good results with global_age += length
+
             # be optimistic about the true global age (TODO this needs verifying)
-            #global_age = max(global_age, start + length)
-            global_age += length
+            if args.method == 'discard_rel':
+                global_age = max(global_age, start + length)
+            else:
+                global_age += length
 
         # retrieve a singular client model
         elif msg == 'get_client_model':
