@@ -38,20 +38,30 @@ parser.add_argument('--height', default=4,
                     help='Figure height for file export (inches)')
 parser.add_argument('--dpi', default=100,
                     help='Figure DPI for file export')
+parser.add_argument('--series', default='age',
+                    help='X series to plot against')
 parser.add_argument('sources', nargs='+', help='Data series to plot')
 
 args = parser.parse_args()
 
 def read_source(source):
     with open(source, 'r') as f:
-        fdata = eval(f.read())
+        return eval(f.read())
 
+    if type(fdata) == list:
+        # older experiment support
         if type(fdata[0]) == list:
             data_Y = np.array(fdata[1])
             data_X = np.array(fdata[0])
         else:
             data_Y = np.array(fdata)
             data_X = np.arange(len(data_Y))
+            data_age = 
+    elif type(fdata) == dict:
+        data_X = np.array(fdata[args.series])
+        data_Y = np.array(fdata['reward'])
+    else:
+        raise NotImplementedError(type(fdata))
 
     mean_Y = None
 
