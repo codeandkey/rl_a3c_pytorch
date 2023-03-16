@@ -83,7 +83,6 @@ def scheduler(args, shared_model, env_conf):
             client_wt = min(args.potential_mdp_cap, client_wt)
 
             new_global_params = {}
-            global_wt = 1 - client_wt
 
             #print('global model will update')
             kk = list(delta.keys())[0]
@@ -96,28 +95,51 @@ def scheduler(args, shared_model, env_conf):
             # discarding relative to the start age
             discard_rel_wt = length / (global_age - start) if start + length < global_age else 1
 
+            global_wt = 1 # add factor for current global params
+            merge_wt = 0 # add factor for client gradients
+            merge_params = delta # the parameters to merge from
+
+            # decide merging parameters
+            if args.method == 'merge_delta':
+                merge_params = delta
+            elif args.method == 'merge_midpoint':
+                merge_params = params
+            else:
+                raise NotImplementedError(args.method)
+
+            # decide merge strength
+            if args.merge_wt == 'full':
+                # apply gradients completely
+                merge_wt = 1
+            elif args.merge_wt == 'norm':
+                # apply gradients by federation sample size
+                merge_wt = 1 / length
+            elif args.merge_wt == 'lin':
+                # discount overall old gradients, but keep new ones
+                merge_wt = (start + length) / global_age if start + length < global_age else 1
+            elif args.merge_wt == 'lin_rel':
+                # discount relatively old gradients, but keep new ones
+                merge_wt = (start + length) / global_age if start + length < global_age else 1
+                discard_rel_wt = length / (global_age - start) if start + length < global_age else 1
+            else:
+                raise NotImplementedError(args.merge_wt)
+
+            # clamp merging weights if needed
+            if args.merge_min is not None:
+                merge_wt = max(args.merge_min, merge_wt)
+
+            if args.merge_max is not None:
+                merge_wt = min(args.merge_max, merge_wt)
+
+            # set global discount if needed
+            if args.method == 'merge_midpoint':
+                # only in the midpoint method do we discount global params, and
+                # it must be AFTER clamping
+                global_wt = 1 - merge_wt
+
+            # apply changes to global parameters
             for k in global_parameters.keys():
-                if args.method == 'potential_delta_full':
-                    new_global_params[k] = global_parameters[k] + delta[k]
-                elif args.method == 'potential_delta_norm':
-                    new_global_params[k] = global_parameters[k] + delta[k] / length
-                elif args.method == 'potential_delta_age':
-                    new_global_params[k] = global_parameters[k] + delta[k] * client_wt
-                elif args.method == 'potential_midpoint':
-                    cv = params[k] * client_wt
-                    gv = global_parameters[k] * global_wt
-
-                    cv = cv.cpu()
-                    new_global_params[k] = cv + gv
-                elif args.method == 'potential_discard':
-                    #print('merging wt', discard_wt)
-                    new_global_params[k] = global_parameters[k] + delta[k] * discard_wt
-                elif args.method == 'discard_rel':
-                    #print('merging wt', discard_rel_wt, flush=True)
-                    new_global_params[k] = global_parameters[k] + delta[k] * discard_rel_wt
-                else:
-                    raise NotImplementedError(args.method)
-
+                new_global_params[k] = global_parameters[k] * global_wt + merge_params[k] * merge_wt
                 #print('from', global_parameters[k], 'to', new_global_params[k])
 
             global_parameters = new_global_params
@@ -125,12 +147,16 @@ def scheduler(args, shared_model, env_conf):
             #print(global_parameters[kk])
 
             # NOTE: potential_discard has good results with global_age += length
+            # FOR march 16, the global age calculation is important and useful as reporting metric
+            # might be best to pursue different calculation modes for the global age and compare
+            # different methods for deciding the discard wt
 
-            # be optimistic about the true global age (TODO this needs verifying)
-            if args.method == 'discard_rel':
+            if args.age_calc == 'max_len':
                 global_age = max(global_age, start + length)
-            else:
+            elif args.age_calc == 'len':
                 global_age += length
+            elif args.age_calc == 'iter':
+                global_age += 1
 
         # retrieve a singular client model
         elif msg == 'get_client_model':
