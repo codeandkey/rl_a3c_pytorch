@@ -59,8 +59,9 @@ def test(args, shared_model, env_conf):
     flag = True
     max_score = 0
     total_steps = 0
-    test_results = []
-    test_ages = []
+    report_rewards = []
+    report_times = []
+    report_ages = []
     while True:
         # get global model from scheduler
         mpi.comm.send(('get_global_model', mpi.rank), dest=0)
@@ -68,7 +69,7 @@ def test(args, shared_model, env_conf):
         msg, payload = mpi.comm.recv(source=0)
 
         if msg == 'global_model':
-            global_parameters, global_age  = payload
+            global_parameters, global_age = payload
             player.model.load_state_dict(global_parameters.copy())
             #print('test model updates')
         elif msg == 'stop':
@@ -105,24 +106,20 @@ def test(args, shared_model, env_conf):
                 reward_total_sum += reward_sum
                 reward_mean = reward_total_sum / num_tests
                 #reward_mean = sum(test_results[-args.window:]) / len(test_results[-args.window:])
-                test_results.append(reward_sum)
 
-                x_value = global_age
-
-                if args.by_time:
-                    x_value = (time.time() - start_time) / 3600
-
-                test_ages.append(x_value)
+                report_rewards.append(reward_sum)
+                report_times.append((time.time() - start_time) / 3600)
+                report_ages.append(global_age)
 
                 with open(outpath, 'w') as f:
-                    f.write(str([test_ages, test_results]))
+                    f.write(str({'age': report_ages, 'reward': report_rewards, 'time': report_times}))
 
                 log['{}_log'.format(args.env)].info(
-                    "Time {0}, ep reward {1}, ep length {2}, reward mean {3:.4f}".
+                        "Time {0}, age {4}, ep reward {1}, ep length {2}, reward mean {3:.4f}".
                     format(
                         time.strftime("%Hh %Mm %Ss",
                                       time.gmtime(time.time() - start_time)),
-                        reward_sum, player.eps_len, reward_mean))
+                        reward_sum, player.eps_len, reward_mean, global_age))
 
                 if args.save_max and reward_sum >= max_score:
                     max_score = reward_sum
