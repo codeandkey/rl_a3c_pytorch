@@ -32,7 +32,7 @@ parser.add_argument(
     metavar='G',
     help='discount factor for rewards (default: 0.99)')
 parser.add_argument(
-    '--by-time',
+    '--report-hours',
     default=False,
     action='store_true',
     help='record results by hours instead of eps')
@@ -51,12 +51,12 @@ parser.add_argument(
 parser.add_argument(
     '--min_offline_steps',
     type=int,
-    default=1000,
+    default=20,
     help='lower bound for offline steps (default: 1000)')
 parser.add_argument(
     '--max_offline_steps',
     type=int,
-    default=10000,
+    default=150,
     help='upper bound for offline steps (default: 10000)')
 parser.add_argument(
     '--cache',
@@ -135,8 +135,31 @@ parser.add_argument(
     help='folder to load trained models from')
 parser.add_argument(
     '--method',
-    default='potential_delta_full',
+    default='merge_delta',
     help='aggregation strategy')
+
+parser.add_argument(
+    '--merge_wt',
+    default='lin',
+    help='merge weight strategy')
+parser.add_argument(
+    '--merge_max',
+    default=1,
+    help='max merge weight')
+parser.add_argument(
+    '--merge_min',
+    default=0,
+    help='min merge weight')
+
+parser.add_argument(
+    '--age_calc',
+    default='len',
+    help='method to track global age')
+
+parser.add_argument(
+    '--report',
+    default='global_age',
+    help='reporting X axis')
 
 parser.add_argument(
     '--potential_mdp_cap',
