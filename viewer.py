@@ -49,7 +49,7 @@ if not args.x_label:
 
 def read_source(source):
     with open(source, 'r') as f:
-        return eval(f.read())
+        fdata = eval(f.read())
 
     if type(fdata) == list:
         # older experiment support
