@@ -59,7 +59,6 @@ def read_source(source):
         else:
             data_Y = np.array(fdata)
             data_X = np.arange(len(data_Y))
-            data_age = 
     elif type(fdata) == dict:
         data_X = np.array(fdata[args.series])
         data_Y = np.array(fdata['reward'])
