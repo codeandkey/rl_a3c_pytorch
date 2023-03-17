@@ -28,7 +28,7 @@ parser.add_argument('--no_window', default=False, action='store_true',
                     help='Plot data directly, without rolling averages')
 
 parser.add_argument('--xmax', default=0, type=int, help='Truncate data series to <xmax> entries')
-parser.add_argument('--x_label', default='training episodes', help='X axis label')
+parser.add_argument('--x_label', default=None, help='X axis label')
 parser.add_argument('--y_label', default='reward', help='Y axis label')
 parser.add_argument('--title', default=None, help='Figure title')
 parser.add_argument('--save', default=None, help='Figure file output')
@@ -43,6 +43,9 @@ parser.add_argument('--series', default='age',
 parser.add_argument('sources', nargs='+', help='Data series to plot')
 
 args = parser.parse_args()
+
+if not args.x_label:
+    args.x_label = args.series
 
 def read_source(source):
     with open(source, 'r') as f:
