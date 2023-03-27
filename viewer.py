@@ -9,10 +9,13 @@
 """
 
 import argparse
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
 from os import path
+
+matplotlib.use('tkagg')
 
 parser = argparse.ArgumentParser(description='Experiment result viewer')
 
@@ -139,7 +142,7 @@ for source in args.sources:
         lines[source], = ax.plot(data_X,
                 data_Y, 
                 data_color + '-',
-                alpha=0.25)
+                alpha=0.25, linewidth=2)
 
         mean_lines[source], = ax.plot(data_X,
                 mean_Y,
