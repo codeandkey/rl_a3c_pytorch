@@ -5,6 +5,7 @@ import time
 import sys
 
 from environment import atari_env
+from collections import deque
 
 from model import A3Clstm
 
@@ -15,6 +16,8 @@ def scheduler(args, shared_model, env_conf):
     global_age = 0
     global_parameters = global_model.state_dict().copy()
     client_parameters = [global_parameters.copy() for _ in range(mpi.size - 1)]
+    #recent_update_age = deque(maxlen=mpi.size)
+    #recent_update_age.append(0)
 
     # wait for messages
     while True:
@@ -24,8 +27,15 @@ def scheduler(args, shared_model, env_conf):
         if msg == 'schedule':
             source = payload
 
-            step_range = args.max_offline_steps - args.min_offline_steps
-            total_steps = sched_rng.integers(step_range) + args.min_offline_steps
+            if args.offline_sample == 'uniform':
+                step_range = args.max_offline_steps - args.min_offline_steps
+                total_steps = sched_rng.integers(step_range) + args.min_offline_steps
+            elif args.offline_sample == 'normal':
+                total_steps = int(args.off_mean + args.off_var * sched_rng.normal())
+                total_steps = max(args.min_offline_steps, total_steps)
+                total_steps = min(args.max_offline_steps, total_steps)
+            else:
+                raise NotImplementedError(args.offline_sample)
 
             response = (global_age, total_steps, global_parameters.copy())
             mpi.comm.send(('next_schedule', response), dest=source)
@@ -121,6 +131,14 @@ def scheduler(args, shared_model, env_conf):
                 # discount relatively old gradients, but keep new ones
                 merge_wt = (start + length) / global_age if start + length < global_age else 1
                 discard_rel_wt = length / (global_age - start) if start + length < global_age else 1
+            elif args.merge_wt == 'discount':
+                # discount purely old gradients
+                if args.age_calc == 'iter':
+                    merge_wt = 1 - ((global_age - start) / mpi.size) ** 2
+                else:
+                    merge_wt = 1 - ((global_age - start) / args.max_offline_steps) ** 2
+                #recent_update_age.append(global_age - start)
+                #print('discount', merge_wt)
             else:
                 raise NotImplementedError(args.merge_wt)
 
@@ -155,6 +173,8 @@ def scheduler(args, shared_model, env_conf):
                 global_age = max(global_age, start + length)
             elif args.age_calc == 'len':
                 global_age += length
+            elif args.age_calc == 'merge':
+                global_age += length * merge_wt
             elif args.age_calc == 'iter':
                 global_age += 1
 

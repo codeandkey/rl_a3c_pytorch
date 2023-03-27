@@ -52,12 +52,26 @@ parser.add_argument(
     '--min_offline_steps',
     type=int,
     default=20,
-    help='lower bound for offline steps (default: 1000)')
+    help='lower bound for offline steps (default: 20)')
 parser.add_argument(
     '--max_offline_steps',
     type=int,
     default=150,
-    help='upper bound for offline steps (default: 10000)')
+    help='upper bound for offline steps (default: 150)')
+parser.add_argument(
+    '--offline_sample',
+    default='uniform',
+    help='sampling method for offline steps (uniform | normal)')
+parser.add_argument(
+    '--off_mean',
+    default=150,
+    type=float,
+    help='normal mean for offline sampling')
+parser.add_argument(
+    '--off_var',
+    default=25,
+    type=float,
+    help='normal variance for offline sampling')
 parser.add_argument(
     '--cache',
     type=int,
