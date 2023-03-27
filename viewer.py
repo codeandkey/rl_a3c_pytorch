@@ -12,6 +12,7 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
+from os import path
 
 parser = argparse.ArgumentParser(description='Experiment result viewer')
 
@@ -40,12 +41,19 @@ parser.add_argument('--dpi', default=100,
                     help='Figure DPI for file export')
 parser.add_argument('--series', default='age',
                     help='X series to plot against')
+parser.add_argument('--bn', default=False, action='store_true',
+                    help='use basenames of series names')
+parser.add_argument('--no_legend', default=False, action='store_true',
+                    help='dont render legend')
 parser.add_argument('sources', nargs='+', help='Data series to plot')
 
 args = parser.parse_args()
 
 if not args.x_label:
     args.x_label = args.series
+
+def apply_bn(x):
+    return path.basename(x) if args.bn else x
 
 def read_source(source):
     with open(source, 'r') as f:
@@ -126,7 +134,7 @@ for source in args.sources:
                 data_Y, 
                 data_color + '-',
                 alpha=0.7,
-                label=(source))
+                label=apply_bn(source))
     else:
         lines[source], = ax.plot(data_X,
                 data_Y, 
@@ -136,9 +144,15 @@ for source in args.sources:
         mean_lines[source], = ax.plot(data_X,
                 mean_Y,
                 data_color + '-', alpha=0.7,
-                label=(source))
+                label=apply_bn(source))
 
-ax.legend()
+if not args.no_legend:
+    ax.legend()
+
+if args.save:
+    #ax.set_size_inches(args.width, args.height)
+    plt.savefig(args.save, dpi=args.dpi)
+    sys.exit(0)
 
 while True:
     for source in args.sources:
@@ -161,7 +175,3 @@ while True:
     else:
         plt.show()
         break
-
-if args.save:
-    #ax.set_size_inches(args.width, args.height)
-    plt.savefig(args.save, dpi=args.dpi)
