@@ -139,6 +139,14 @@ def scheduler(args, shared_model, env_conf):
                     merge_wt = 1 - ((global_age - start) / args.max_offline_steps) ** 2
                 #recent_update_age.append(global_age - start)
                 #print('discount', merge_wt)
+            elif args.merge_wt == 'discount_lin':
+                # discount purely old gradients
+                if args.age_calc == 'iter':
+                    merge_wt = 1 - 1 / ((global_age - start) / mpi.size)
+                else:
+                    merge_wt = 1 - ((global_age - start) / args.max_offline_steps) ** 2
+                #recent_update_age.append(global_age - start)
+                #print('discount', merge_wt)
             else:
                 raise NotImplementedError(args.merge_wt)
 
