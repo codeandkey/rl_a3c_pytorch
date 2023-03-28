@@ -210,39 +210,41 @@ def scheduler(args, shared_model, env_conf):
                 #print('discount', merge_wt)
             elif args.merge_wt == 'discount_poisson_scaled':
                 # discount gradients by probability of occurrence
-                if args.age_calc == 'iter':
-                    if global_age - start <= mpi.size - 2:
-                        merge_wt = 1
-                    else:
-                        # rate = K - 2 (by age increment)
-                        # the update from one is expected every (K - 2) updates
+                if args.age_calc != 'iter':
+                    raise RuntimeError('bad age calc')
 
-                        # if the update is sooner than expected, we revent to full
-                        # otherwise, rescale probability distribution (GIVEN d>(k-2))
+                if global_age - start <= mpi.size - 2:
+                    merge_wt = 1
+                else:
+                    # rate = K - 2 (by age increment)
+                    # the update from one is expected every (K - 2) updates
 
-                        # p(d >= k - 2)
-                        d = global_age - start
-                        rate = mpi.size - 2
-                        p_age = np.exp(-rate) * (rate ** d) / np.math.factorial(d)
-                        # poisson pmf
+                    # if the update is sooner than expected, we revent to full
+                    # otherwise, rescale probability distribution (GIVEN d>(k-2))
 
-                        # slow, but direct poisson cdf
-                        p_is_new = 0
-                        for j in range(mpi.size - 2):
-                            pmf = np.exp(-rate) * (rate ** j) / np.math.factorial(j)
-                            p_is_new += pmf
+                    # p(d >= k - 2)
+                    d = global_age - start
+                    rate = mpi.size - 2
+                    p_age = np.exp(-rate) * (rate ** d) / np.math.factorial(d)
+                    # poisson pmf
 
-                        p_is_old = 1 - p_is_new
+                    # slow, but direct poisson cdf
+                    p_is_new = 0
+                    for j in range(mpi.size - 2):
+                        pmf = np.exp(-rate) * (rate ** j) / np.math.factorial(j)
+                        p_is_new += pmf
 
-                        # rescale merge wt from 1-0
-                        # max = pmf ( k - 1 )
-                        top = np.exp(-rate) * (rate ** (mpi.size - 1)) / np.math.factorial(mpi.size - 1)
-                        p_age /= top
+                    p_is_old = 1 - p_is_new
 
-                        merge_wt = p_age / p_is_old # probability of this client's window,
-                        # given we know it is already old
+                    # rescale merge wt from 1-0
+                    # max = pmf ( k - 1 )
+                    top = np.exp(-rate) * (rate ** (mpi.size - 1)) / np.math.factorial(mpi.size - 1)
+                    p_age /= top
 
-                        #print('p_is_new', p_is_new, 'p_is_old', p_is_old, 'p_age', p_age, 'rate', rate, 'd', d)
+                    merge_wt = p_age / p_is_old # probability of this client's window,
+                    # given we know it is already old
+
+                    #print('p_is_new', p_is_new, 'p_is_old', p_is_old, 'p_age', p_age, 'rate', rate, 'd', d)
             else:
                 raise NotImplementedError(args.merge_wt)
 
