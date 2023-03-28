@@ -18,6 +18,9 @@ def scheduler(args, shared_model, env_conf):
     client_parameters = [global_parameters.copy() for _ in range(mpi.size - 1)]
     #recent_update_age = deque(maxlen=mpi.size)
     #recent_update_age.append(0)
+    interval_window = deque(maxlen=300)
+    interval_window.append(0)
+    interval_window_report = 0
 
     # wait for messages
     while True:
@@ -109,6 +112,16 @@ def scheduler(args, shared_model, env_conf):
             merge_wt = 0 # add factor for client gradients
             merge_params = delta # the parameters to merge from
 
+            mean_interval = np.average(interval_window)
+            std_interval = np.std(interval_window)
+
+            client_window = (global_age - start)
+            interval_window.append(client_window)
+            interval_window_report += 1
+
+            if interval_window_report % 100 == 0:
+                print('expected interval window', sum(interval_window) / len(interval_window))
+
             # decide merging parameters
             if args.method == 'merge_delta':
                 merge_params = delta
@@ -142,11 +155,94 @@ def scheduler(args, shared_model, env_conf):
             elif args.merge_wt == 'discount_lin':
                 # discount purely old gradients
                 if args.age_calc == 'iter':
-                    merge_wt = 1 - 1 / ((global_age - start) / mpi.size)
+                    if global_age - start <= mpi.size:
+                        merge_wt = 1
+                    else:
+                        merge_wt = mpi.size / (global_age - start)
                 else:
-                    merge_wt = 1 - ((global_age - start) / args.max_offline_steps) ** 2
+                    raise RuntimeError('invalid age')
                 #recent_update_age.append(global_age - start)
                 #print('discount', merge_wt)
+            elif args.merge_wt == 'discount_sqr':
+                # discount purely old gradients
+                if args.age_calc == 'iter':
+                    if global_age - start <= mpi.size:
+                        merge_wt = 1
+                    else:
+                        merge_wt = (mpi.size / (global_age - start)) ** 2
+                else:
+                    raise RuntimeError('invalid age')
+                #recent_update_age.append(global_age - start)
+                #print('discount', merge_wt)
+            elif args.merge_wt == 'discount_poisson':
+                # discount gradients by probability of occurrence
+                if args.age_calc == 'iter':
+                    if global_age - start <= mpi.size - 2:
+                        merge_wt = 1
+                    else:
+                        # rate = K - 2 (by age increment)
+                        # the update from one is expected every (K - 2) updates
+
+                        # if the update is sooner than expected, we revent to full
+                        # otherwise, rescale probability distribution (GIVEN d>(k-2))
+
+                        # p(d >= k - 2)
+                        d = global_age - start
+                        rate = mpi.size - 2
+                        p_age = np.exp(-rate) * (rate ** d) / np.math.factorial(d)
+                        # poisson pmf
+
+                        # slow, but direct poisson cdf
+                        p_is_new = 0
+                        for j in range(mpi.size - 2):
+                            pmf = np.exp(-rate) * (rate ** j) / np.math.factorial(j)
+                            p_is_new += pmf
+
+                        p_is_old = 1 - p_is_new
+
+                        merge_wt = p_age / p_is_old # probability of this client's window,
+                        # given we know it is already old
+
+                        #print('p_is_new', p_is_new, 'p_is_old', p_is_old, 'p_age', p_age, 'rate', rate, 'd', d)
+                else:
+                    raise RuntimeError('invalid age')
+                #recent_update_age.append(global_age - start)
+                #print('discount', merge_wt)
+            elif args.merge_wt == 'discount_poisson_scaled':
+                # discount gradients by probability of occurrence
+                if args.age_calc == 'iter':
+                    if global_age - start <= mpi.size - 2:
+                        merge_wt = 1
+                    else:
+                        # rate = K - 2 (by age increment)
+                        # the update from one is expected every (K - 2) updates
+
+                        # if the update is sooner than expected, we revent to full
+                        # otherwise, rescale probability distribution (GIVEN d>(k-2))
+
+                        # p(d >= k - 2)
+                        d = global_age - start
+                        rate = mpi.size - 2
+                        p_age = np.exp(-rate) * (rate ** d) / np.math.factorial(d)
+                        # poisson pmf
+
+                        # slow, but direct poisson cdf
+                        p_is_new = 0
+                        for j in range(mpi.size - 2):
+                            pmf = np.exp(-rate) * (rate ** j) / np.math.factorial(j)
+                            p_is_new += pmf
+
+                        p_is_old = 1 - p_is_new
+
+                        # rescale merge wt from 1-0
+                        # max = pmf ( k - 1 )
+                        top = np.exp(-rate) * (rate ** (mpi.size - 1)) / np.math.factorial(mpi.size - 1)
+                        p_age /= top
+
+                        merge_wt = p_age / p_is_old # probability of this client's window,
+                        # given we know it is already old
+
+                        #print('p_is_new', p_is_new, 'p_is_old', p_is_old, 'p_age', p_age, 'rate', rate, 'd', d)
             else:
                 raise NotImplementedError(args.merge_wt)
 
