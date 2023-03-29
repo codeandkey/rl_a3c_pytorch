@@ -140,8 +140,8 @@ parser.add_argument(
 
 parser.add_argument(
     '--name',
-    default=None,
-    help='the run name (default: [environment name])')
+    default='noname',
+    help='the run name')
 parser.add_argument(
     '--load-model-dir',
     default='trained_models/',
