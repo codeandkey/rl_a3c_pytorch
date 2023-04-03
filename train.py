@@ -45,15 +45,28 @@ def train(args, env_conf):
         player = payload['agent']
         optimizer_params = payload['optimizer_params']
 
-        if not player.env:
+        if not player:
             # the environment is not initialized yet, we do it here
             # to enable parallelism
-            player.env = atari_env(args.env, env_conf, args)
-            player.env.reset(seed=args.seed * 340 + client)
+            env = atari_env(args.env, env_conf, args)
+            env.seed(args.seed * 340 + client)
+            player = Agent(None, env, args, None)
+            player.gpu_id = gpu_id
+            player.state = player.env.reset()
+            player.eps_len += 2
+            player.state = torch.from_numpy(player.state).float()
+
+            if gpu_id >= 0:
+                with torch.cuda.device(gpu_id):
+                    player.state = player.state.cuda()
 
         if not model:
             model = A3Clstm(player.env.observation_space.shape[0],
                             player.env.action_space)
+
+            if gpu_id >= 0:
+                with torch.cuda.device(gpu_id):
+                    model = model.cuda()
 
         # reload player model
         player.model = model
@@ -64,6 +77,8 @@ def train(args, env_conf):
                 player.model.load_state_dict(params)
         else:
             player.model.load_state_dict(params)
+
+        player.model.train()
 
         total_steps = 0
         last_global_params = params.copy()
@@ -84,7 +99,7 @@ def train(args, env_conf):
             optimizer.load_state_dict(optimizer_params.copy())
 
         # update optimizer parameter group (again)
-        optimizer.param_groups[0]['params'] = player.model.parameters()
+        #optimizer.param_groups[0]['params'] = player.model.parameters()
 
         #print(mpi.rank, 'training for', length)
 

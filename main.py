@@ -198,6 +198,36 @@ parser.add_argument(
     help='min merge weight')
 
 parser.add_argument(
+    '--steps_per_global',
+    default=200,
+    help='offline steps allocated per global timestep')
+
+parser.add_argument(
+    '--steps_var',
+    default=25,
+    help='offline steps variance')
+
+parser.add_argument(
+    '--min_window',
+    default=4,
+    help='minimum client offline window')
+
+parser.add_argument(
+    '--max_window',
+    default=16,
+    help='maximum client offline window')
+
+parser.add_argument(
+    '--window_mean',
+    default=10,
+    help='offline window mean (for normal distribution)')
+
+parser.add_argument(
+    '--window_var',
+    default=5,
+    help='offline window variance (for normal distribution)')
+
+parser.add_argument(
     '--age_calc',
     default='len',
     help='method to track global age')
@@ -284,4 +314,4 @@ if __name__ == '__main__':
         sys.exit(test(args, shared_model, env_conf))
 
     # spawn workers
-    sys.exit(train(args, shared_model, env_conf))
+    sys.exit(train(args, env_conf))

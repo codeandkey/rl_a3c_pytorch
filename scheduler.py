@@ -22,21 +22,10 @@ def scheduler(args, shared_model, env_conf):
     client_agents = [None for _ in range(args.clients)]
     client_optimizer_params = [None for _ in range(args.clients)]
 
-    for player in client_agents:
-        # initialize local agents
-
-        player.model = A3Clstm(player.env.observation_space.shape[0],
-                               player.env.action_space)
-
-        player.state = player.env.reset()
-        player.state = torch.from_numpy(player.state).float()
-        player.model.train()
-        player.eps_len += 2
-    
     # global model
     ref_environment = atari_env(args.env, env_conf, args)
-    state_space = ref_environments.observation_space.shape[0]
-    action_space = ref_environments.action_space
+    state_space = ref_environment.observation_space.shape[0]
+    action_space = ref_environment.action_space
     global_model = A3Clstm(state_space, action_space)
     global_parameters = global_model.state_dict()
 
@@ -50,26 +39,37 @@ def scheduler(args, shared_model, env_conf):
     # Initialize job status for each simulated client
     def next_job(client_rng, current_time):
         if args.job_sample == 'uniform':
-            step_range = args.max_steps - args.min_steps
+            window_range = args.max_window - args.min_window
             delay_range = args.max_delay - args.min_delay
             start_delay = client_rng.integers(delay_range) + args.min_delay
-            steps = client_rng.integers(step_range) + args.min_steps
+            window = client_rng.integers(window_range) + args.min_window
+            step_range = args.steps_var * 2
+
+            steps = args.steps_per_global * window + \
+                    client_rng.integers(step_range) - args.steps_var
         elif args.job_sample == 'normal':
             start_delay = int(args.delay_mean +
                               args.delay_var * client_rng.normal())
             start_delay = max(args.min_delay, start_delay)
             start_delay = min(args.max_delay, start_delay)
 
-            steps = int(args.steps_mean + args.steps_var * client_rng.normal())
-            steps = max(args.min_steps, steps)
-            steps = min(args.max_steps, steps)
+            # generate offline time
+            window = int(args.window_mean + args.window_var * client_rng.normal())
+            window = max(args.min_window, window)
+            window = min(args.max_window, window)
+            
+            # generate offline steps, scaled by expected steps per global
+            # time step
+            steps = args.steps_per_global * window
+            steps = args.steps_var * client_rng.normal() + steps
         else:
             raise NotImplementedError(args.job_sample)
 
         return {
             'start': current_time + start_delay,
             'end': current_time + start_delay + steps,
-            'window': steps,
+            'window': window,
+            'steps': steps,
             'status': 'start_pending',
         }
 
