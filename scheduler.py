@@ -19,10 +19,7 @@ def scheduler(args, shared_model, env_conf):
     sched_rng = np.random.default_rng(seed=args.seed*100 + 130)
 
     # simulated clients
-    client_environments = [atari_env(args.env, env_conf, args)
-                           for _ in range(args.clients)]
-    client_agents = [Agent(None, client_environments[i], args, None) for i in range(args.clients)]
-
+    client_agents = [None for _ in range(args.clients)]
     client_optimizer_params = [None for _ in range(args.clients)]
 
     for player in client_agents:
@@ -37,8 +34,9 @@ def scheduler(args, shared_model, env_conf):
         player.eps_len += 2
     
     # global model
-    state_space = client_environments[0].observation_space.shape[0]
-    action_space = client_environments[0].action_space
+    ref_environment = atari_env(args.env, env_conf, args)
+    state_space = ref_environments.observation_space.shape[0]
+    action_space = ref_environments.action_space
     global_model = A3Clstm(state_space, action_space)
     global_parameters = global_model.state_dict()
 
@@ -198,12 +196,10 @@ def scheduler(args, shared_model, env_conf):
                     client = update_params['client']
                     delta_params = update_params['delta_params']
                     agent = update_params['agent']
-                    environment = update_params['env']
                     optimizer_params = update_params['optimizer_params']
 
                     # update local client states
                     client_agents[client] = agent
-                    client_environments[client] = environment
                     client_optimizer_params[client] = optimizer_params
 
                     # get next job, starting next timestep at earliest
@@ -241,7 +237,6 @@ def scheduler(args, shared_model, env_conf):
                         'model': global_parameters.copy(),
                         'agent': client_agents[new_job_client],
                         'params': global_parameters.copy(),
-                        'env': client_environments[new_job_client],
                         'optimizer_params': client_optimizer_params[new_job_client],
                     }
                     jobs[new_job_client]['status'] = 'running'

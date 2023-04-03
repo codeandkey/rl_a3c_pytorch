@@ -12,9 +12,11 @@ import mpi
 import time
 import copy
 
-def train(args, shared_model, env_conf):
+def train(args, env_conf):
     ptitle('train {}'.format(mpi.rank))
     gpu_id = args.gpu_ids[mpi.rank % len(args.gpu_ids)]
+
+    model = None # you better not use this model
 
     optimizer = None
     update_params = None
@@ -41,8 +43,20 @@ def train(args, shared_model, env_conf):
         steps = payload['steps']
         params = payload['params'].copy()
         player = payload['agent']
-        env = payload['env']
         optimizer_params = payload['optimizer_params']
+
+        if not player.env:
+            # the environment is not initialized yet, we do it here
+            # to enable parallelism
+            player.env = atari_env(args.env, env_conf, args)
+            player.env.reset(seed=args.seed * 340 + client)
+
+        if not model:
+            model = A3Clstm(player.env.observation_space.shape[0],
+                            player.env.action_space)
+
+        # reload player model
+        player.model = model
 
         # update local model
         if gpu_id >= 0:
@@ -68,6 +82,9 @@ def train(args, shared_model, env_conf):
         # update optimizer state
         if optimizer_params:
             optimizer.load_state_dict(optimizer_params.copy())
+
+        # update optimizer parameter group (again)
+        optimizer.param_groups[0]['params'] = player.model.parameters()
 
         #print(mpi.rank, 'training for', length)
 
@@ -141,11 +158,15 @@ def train(args, shared_model, env_conf):
         params = player.model.state_dict().copy()
         delta_params = { k: params[k].cpu() - last_global_params[k].cpu() for k in params.keys() }
 
+        # we can bundle the env with the player, but we remove
+        # the model from the player to save bandwidth
+
+        player.model = None
+
         update_params = {
             'client': client,
             'delta_params': delta_params,
             'agent': player,
-            'env': env,
             'optimizer_params': optimizer.state_dict()
         }
 
