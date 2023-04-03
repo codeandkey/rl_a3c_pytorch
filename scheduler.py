@@ -21,7 +21,7 @@ def scheduler(args, shared_model, env_conf):
     # simulated clients
     client_agents = [None for _ in range(args.clients)]
     client_optimizer_params = [None for _ in range(args.clients)]
-
+    
     # global model
     ref_environment = atari_env(args.env, env_conf, args)
     state_space = ref_environment.observation_space.shape[0]
@@ -128,32 +128,39 @@ def scheduler(args, shared_model, env_conf):
         for client in range(args.clients):
             job = jobs[client]
 
-            if job['start'] != current_time and job['end'] != current_time:
-                # this job is not relevant to the current timestep
-                continue
-
             if job['status'] == 'start_pending':
-                # this job is ready to start
-                pending_start.append(client)
+                if job['start'] == current_time:
+                    # this job is ready to start
+                    pending_start.append(client)
+                else:
+                    assert current_time < job['start']
 
             elif job['status'] == 'running':
-                # this job is not complete yet
-                pending_result.append(client)
+                if job['end'] == current_time:
+                    # this job is not complete yet
+                    pending_result.append(client)
+                else:
+                    assert current_time < job['end']
+                    assert job['start'] <= current_time
 
             elif job['status'] == 'completed':
-                # this job is completed, and destined to be merged
-                update_global_model(client, job['delta_params'])
+                if job['end'] == current_time:
+                    # this job is completed, and destined to be merged
+                    update_global_model(client, job['delta_params'])
 
-                # advance the job, don't allow immediate start
-                jobs[client] = next_job(job_rngs[client], current_time + 1)
+                    # advance the job, don't allow immediate start
+                    jobs[client] = next_job(job_rngs[client], current_time + 1)
+                else:
+                    assert current_time < job['end']
+                    assert job['start'] <= current_time
 
             else:
                 raise NotImplementedError(job['status'])
 
         # write status log
         if time.time() - last_log_time > args.log_interval or True:
-            print('t: {}, {} join, {} leave'.format(current_time,
-                  len(pending_start), len(pending_result)))
+            print('t: {}, {} leave, {} join'.format(current_time,
+                len(pending_start), len(pending_result)))
             last_log_time = time.time()
 
         # if there are no pending jobs, we can advance to the next timestep
@@ -202,10 +209,6 @@ def scheduler(args, shared_model, env_conf):
                     client_agents[client] = agent
                     client_optimizer_params[client] = optimizer_params
 
-                    # get next job, starting next timestep at earliest
-                    jobs[client] = next_job(
-                        job_rngs[client], current_time + 1)
-
                     if client not in pending_result:
                         # we've received an early result, we write the job as completed
                         # and wait for the future merge
@@ -225,6 +228,10 @@ def scheduler(args, shared_model, env_conf):
                         # update the global model with the client's parameter update
                         update_global_model(
                             client, delta_params)
+
+                        # get next job, starting next timestep at earliest
+                        jobs[client] = next_job(
+                            job_rngs[client], current_time + 1)
 
                 # build the next job for this client
                 new_job_params = None
