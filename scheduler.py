@@ -10,6 +10,8 @@ from collections import deque
 import scipy
 
 from model import A3Clstm
+from player_util import Agent
+import math
 
 def scheduler(args, shared_model, env_conf):
     sched_rng = np.random.default_rng(seed=args.seed*100 + 130)
@@ -24,7 +26,119 @@ def scheduler(args, shared_model, env_conf):
     interval_window.append(0)
     interval_window_report = 0
 
+    client_environments = [atari_env(args.env, env_conf, args) for _ in range(args.clients)]
+    client_agents = [Agent(None, env, args, None) for _ in range(args.clients)]
+
+    # Initialize job generator RNGs for each simulated client
+    job_rngs = [np.random.default_rng(seed=args.seed*args.clients + i) for i in range(args.clients)]
+
+    def next_job(client_rng, current_time):
+        if args.job_sample == 'uniform':
+            step_range = args.max_steps - args.min_steps
+            delay_range = args.max_delay - args.min_delay
+            start_delay = client_rng.integers(delay_range) + args.min_delay
+            total_steps = client_rng.integers(step_range) + args.min_steps
+        elif args.job_sample == 'normal':
+            start_delay = int(args.delay_mean + args.delay_var * client_rng.normal())
+            start_delay = max(args.min_delay, start_delay)
+            start_delay = min(args.max_delay, start_delay)
+
+            total_steps = int(args.steps_mean + args.steps_var * client_rng.normal())
+            total_steps = max(args.min_steps, total_steps)
+            total_steps = min(args.max_steps, total_steps)
+        else:
+            raise NotImplementedError(args.job_sample)
+
+        return {
+            'start': current_time + start_delay,
+            'end': current_time + start_delay + total_steps,
+            'status': 'start_pending',
+        }
+
+    # Initialize job status for each simulated client
+    jobs = [next_job(job_rngs[i], 0) for i in range(args.clients)]
+
     client_windows = np.zeros(mpi.size - 2)
+    current_time = 0
+
+    def update_global_model(client, delta_params):
+        """Update the global model with the client's parameter update."""
+
+        # compute the current average window
+        avg_client_window = sum(client_windows) / max(1, len(client_windows))
+
+        if avg_client_window == 0:
+            merge_wt = 1
+        else:
+            current_window = jobs[client]['end'] - jobs[client]['start']
+
+            # scale delta update by scaled poisson distribution
+            pmf_max = scipy.stats.poisson.pmf(math.floor(avg_client_window), avg_client_window)
+            merge_wt = scipy.stats.poisson.pmf(client_window, avg_client_window) / pmf_max
+
+            # merge the client's update into the global model
+            for key in global_parameters.keys():
+                global_parameters[key] = global_parameters[key] + delta_params[key] * merge_wt
+
+    # in an infinite loop, we simulate each timestep at the server side.
+    # before advancing to the next timestep, we must ensure all jobs overlapping
+    # the current time have been completed.
+    while True:
+        # first, we iterate through jobs and collect those that are ready to start
+        # or are required to finish before we can advance to the next timestep
+
+        pending_result = [] # we need to wait for these jobs to finish before advancing
+        pending_start = [] # we need to send these jobs to clients before advancing
+
+        for client in range(args.clients):
+            job = jobs[client]
+
+            if job['start'] != current_time and job['end'] != current_time:
+                # this job is not relevant to the current timestep
+                continue
+
+            if job['status'] == 'start_pending':
+                # this job is ready to start
+                pending_start.append(client)
+
+            elif job['status'] == 'running':
+                # this job is not complete yet
+                pending_result.append(client)
+
+            # if there are no pending jobs, we can advance to the next timestep
+            if len(pending_result) == 0 and len(pending_start) == 0:
+                current_time += 1
+                continue
+
+            # process the next message received
+            msg, payload = mpi.comm.recv()
+
+            if msg == 'sync':
+                # a client will interact with the server
+                # we receive the client's parameter update (if any), and respond
+                # with the current global parameters and a job to run
+
+                source, update_params = payload
+
+                if update_params is not None:
+                    # receive update parameters from client
+                    client, delta_params = update_params
+
+
+
+                # build the next job for this client
+                new_job_params = None
+
+                if len(pending_start) > 0:
+                    new_job_client = pending_start.pop()
+                    new_job_params = {
+                        'client': new_job_client,
+                        'model': global_parameters.copy(),
+                        'agent': client_agents[new_job_client],
+                        'environment': client_environments[new_job_client]
+                    }
+
+                mpi.comm.send(('go', new_job_params), dest=source)
 
     # wait for messages
     while True:

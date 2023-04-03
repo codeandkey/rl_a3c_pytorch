@@ -134,6 +134,11 @@ parser.add_argument(
     help='shares optimizer choice of Adam or RMSprop')
 
 parser.add_argument(
+    '--clients',
+    default=128,
+    help='simulated federation size')
+
+parser.add_argument(
     '--experiment',
     default=None,
     help='the parent experiment name (default: none)')
