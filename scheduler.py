@@ -7,6 +7,8 @@ import sys
 from environment import atari_env
 from collections import deque
 
+import scipy
+
 from model import A3Clstm
 
 def scheduler(args, shared_model, env_conf):
@@ -21,6 +23,8 @@ def scheduler(args, shared_model, env_conf):
     interval_window = deque(maxlen=300)
     interval_window.append(0)
     interval_window_report = 0
+
+    client_windows = np.zeros(mpi.size - 2)
 
     # wait for messages
     while True:
@@ -70,7 +74,8 @@ def scheduler(args, shared_model, env_conf):
 
         # update global parameters, with some midpoint weight
         elif msg == 'update_global_model':
-            start, length, params, delta = payload
+            start, length, params, delta, client_rank = payload
+            client = client_rank - 2
 
             if start + length == global_age:
                 # the client is equal, we get the exact midpoint
@@ -118,6 +123,13 @@ def scheduler(args, shared_model, env_conf):
             client_window = (global_age - start)
             interval_window.append(client_window)
             interval_window_report += 1
+
+            if sum(client_windows) == 0:
+                avg_client_window = client_window
+            else:
+                avg_client_window = sum(client_windows) / len(client_windows)
+
+            client_windows[client] = client_window
 
             if interval_window_report % 100 == 0:
                 print('expected interval window', sum(interval_window) / len(interval_window))
@@ -191,13 +203,13 @@ def scheduler(args, shared_model, env_conf):
                     # p(d >= k - 2)
                     d = global_age - start
                     rate = mpi.size - 2
-                    p_age = np.exp(-rate) * (rate ** d) / np.math.factorial(d)
-                    # poisson pmf
 
+                    # THIS IS WRONG
                     def pmf(k):
-                        res = np.exp(-rate) * (rate ** k) / np.math.factorial(k)
-                        print(f'pmf({k}) = {res}')
-                        return res
+                        return scipy.stats.poisson.pmf(rate, k)
+
+                    p_age = pmf(d)
+                    # poisson pmf
 
                     # slow, but direct poisson cdf
                     p_is_new = 0
@@ -220,6 +232,38 @@ def scheduler(args, shared_model, env_conf):
                     #print('rate', rate, 'd', d, 'merge_wt', merge_wt)
 
                     #print('p_is_new', p_is_new, 'p_is_old', p_is_old, 'p_age', p_age, 'rate', rate, 'd', d)
+            elif args.merge_wt == 'drop':
+                merge_wt = 1 if (global_age - start) <= (mpi.size - 2) else 0
+            elif args.merge_wt == 'poisson_raw_scaled':
+                # raw poisson inversion, discounting both new and old gradients
+                # by likelihood of offline window
+
+                #print('mergepraw')
+                i = 0
+                last_pmf = -1
+                while True:
+                    cur_pmf = scipy.stats.poisson.pmf(i, avg_client_window)
+                    #print('last_pmf', last_pmf, 'cur_pmf', cur_pmf)
+                    if cur_pmf <= last_pmf:
+                        #print('identify max =', last_pmf)
+                        break
+                    else:
+                        i += 1
+                        last_pmf = cur_pmf
+
+                pmf_maximum = last_pmf
+
+                # rescale PMF bounds to [0, 1]
+                merge_wt = scipy.stats.poisson.pmf(client_window, avg_client_window)
+                
+                if merge_wt > pmf_maximum:
+                    raise RuntimeError('bad poisson upper bound')
+
+                #print('client pmf', merge_wt)
+                merge_wt /= pmf_maximum
+
+                #if global_age % 200 == 0:
+                    #print('avg_client_window', avg_client_window, 'client_window', client_window, 'merge_wt', merge_wt, 'global_age', global_age)
             else:
                 raise NotImplementedError(args.merge_wt)
 

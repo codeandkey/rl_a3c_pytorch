@@ -41,7 +41,7 @@ def test(args, shared_model, env_conf):
         torch.cuda.manual_seed(args.seed)
     env = atari_env(args.env, env_conf, args)
     reward_sum = 0
-    start_time = time.time()
+    start_time = time.process_time()
     num_tests = 0
     reward_total_sum = 0
     player = Agent(None, env, args, None)
@@ -108,7 +108,7 @@ def test(args, shared_model, env_conf):
                 #reward_mean = sum(test_results[-args.window:]) / len(test_results[-args.window:])
 
                 report_rewards.append(reward_sum)
-                report_times.append((time.time() - start_time) / 3600)
+                report_times.append((time.process_time() - start_time) / 3600)
                 report_ages.append(global_age)
 
                 with open(outpath, 'w') as f:
@@ -118,7 +118,7 @@ def test(args, shared_model, env_conf):
                         "Time {0}, age {4}, ep reward {1}, ep length {2}, reward mean {3:.4f}".
                     format(
                         time.strftime("%Hh %Mm %Ss",
-                                      time.gmtime(time.time() - start_time)),
+                                      time.gmtime(time.process_time() - start_time)),
                         reward_sum, player.eps_len, reward_mean, global_age))
 
                 if args.save_max and reward_sum >= max_score:
@@ -137,7 +137,11 @@ def test(args, shared_model, env_conf):
                 player.eps_len = 0
                 state = player.env.reset()
                 player.eps_len += 2
-                time.sleep(10)
+
+                # this is cursed, let's just blow up result data instead
+                #time.sleep(10)
+                #start_time -= 10 # as time.process_time() excludes waiting time
+
                 player.state = torch.from_numpy(state).float()
                 if gpu_id >= 0:
                     with torch.cuda.device(gpu_id):

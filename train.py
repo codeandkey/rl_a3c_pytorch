@@ -51,7 +51,7 @@ def train(args, shared_model, env_conf):
             params = player.model.state_dict().copy()
             delta = { k: params[k].cpu() - last_global[k].cpu() for k in params.keys() }
 
-            mpi.comm.send(('update_global_model', (start, length, params, delta)), dest=0)
+            mpi.comm.send(('update_global_model', (start, length, params, delta, mpi.rank)), dest=0)
 
         # reload cache
         if args.cache > 0:
