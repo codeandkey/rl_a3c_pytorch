@@ -69,7 +69,7 @@ def test(args, shared_model, env_conf):
         msg, payload = mpi.comm.recv(source=0)
 
         if msg == 'global_model':
-            global_parameters, global_age = payload
+            current_time, global_parameters, total_updates = payload
             player.model.load_state_dict(global_parameters.copy())
             #print('test model updates')
         elif msg == 'stop':
@@ -108,18 +108,18 @@ def test(args, shared_model, env_conf):
                 #reward_mean = sum(test_results[-args.window:]) / len(test_results[-args.window:])
 
                 report_rewards.append(reward_sum)
-                report_times.append((time.process_time() - start_time) / 3600)
-                report_ages.append(global_age)
+                report_times.append(current_time)
+                report_ages.append(total_updates)
 
                 with open(outpath, 'w') as f:
                     f.write(str({'age': report_ages, 'reward': report_rewards, 'time': report_times}))
 
                 log['{}_log'.format(args.env)].info(
-                        "Time {0}, age {4}, ep reward {1}, ep length {2}, reward mean {3:.4f}".
+                        "Time {0}, timestep {5}, age {4}, ep reward {1}, ep length {2}, reward mean {3:.4f}".
                     format(
                         time.strftime("%Hh %Mm %Ss",
                                       time.gmtime(time.process_time() - start_time)),
-                        reward_sum, player.eps_len, reward_mean, global_age))
+                        reward_sum, player.eps_len, reward_mean, total_updates, current_time))
 
                 if args.save_max and reward_sum >= max_score:
                     max_score = reward_sum

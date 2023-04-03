@@ -55,12 +55,12 @@ parser.add_argument(
     metavar='S',
     help='random seed (default: 1)')
 parser.add_argument(
-    '--steps_min',
+    '--min_steps',
     type=int,
     default=20,
     help='lower bound for offline steps (default: 20)')
 parser.add_argument(
-    '--steps_max',
+    '--max_steps',
     type=int,
     default=150,
     help='upper bound for offline steps (default: 150)')
@@ -70,15 +70,20 @@ parser.add_argument(
     type=float,
     help='normal mean for offline sampling')
 parser.add_argument(
-    '--delay_min',
+    '--min_delay',
     type=int,
     default=20,
     help='lower bound for offline delay (default: 20)')
 parser.add_argument(
-    '--delay_max',
+    '--max_delay',
     type=int,
     default=150,
     help='upper bound for offline delay (default: 150)')
+parser.add_argument(
+    '--max_time',
+    type=int,
+    default=100000,
+    help='total federation time steps')
 parser.add_argument(
     '--delay_mean',
     default=150,
@@ -90,7 +95,7 @@ parser.add_argument(
     type=float,
     help='normal variance for offline sampling')
 parser.add_argument(
-    '--job_name',
+    '--job_sample',
     default='uniform',
     help='sampling method for offline scheduling (uniform | normal)')
 parser.add_argument(
@@ -157,6 +162,7 @@ parser.add_argument(
 parser.add_argument(
     '--clients',
     default=128,
+    type=int,
     help='simulated federation size')
 
 parser.add_argument(
@@ -180,7 +186,7 @@ parser.add_argument(
 
 parser.add_argument(
     '--merge_wt',
-    default='lin',
+    default='poisson_raw_scaled',
     help='merge weight strategy')
 parser.add_argument(
     '--merge_max',

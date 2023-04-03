@@ -9,89 +9,69 @@ from player_util import Agent
 from torch.autograd import Variable
 
 import mpi
+import time
+import copy
 
 def train(args, shared_model, env_conf):
-    ptitle('Training Agent: {}'.format(mpi.rank))
+    ptitle('train {}'.format(mpi.rank))
     gpu_id = args.gpu_ids[mpi.rank % len(args.gpu_ids)]
-    torch.manual_seed(args.seed + mpi.rank)
-    if gpu_id >= 0:
-        torch.cuda.manual_seed(args.seed + mpi.rank)
-    env = atari_env(args.env, env_conf, args)
-    env.seed(args.seed + mpi.rank)
-    player = Agent(None, env, args, None)
-    player.gpu_id = gpu_id
-    player.model = A3Clstm(player.env.observation_space.shape[0],
-                           player.env.action_space)
 
-    player.state = player.env.reset()
-    player.state = torch.from_numpy(player.state).float()
-    if gpu_id >= 0:
-        with torch.cuda.device(gpu_id):
-            player.state = player.state.cuda()
-            player.model = player.model.cuda()
-    player.model.train()
-    player.eps_len += 2
-
-    if args.optimizer == 'RMSprop':
-        optimizer = optim.RMSprop(player.model.parameters(), lr=args.lr)
-    if args.optimizer == 'Adam':
-        optimizer = optim.Adam(
-            player.model.parameters(), lr=args.lr, amsgrad=args.amsgrad)
-
-    updated_model = False
-    last_global = {}
-    model_cache = [A3Clstm(player.env.observation_space.shape[0], player.env.action_space) for _ in range(args.cache)]
-    
-    start = 0
-    length = 0
+    optimizer = None
+    update_params = None
 
     while True:
-        if updated_model:
-            # send next model update
-            params = player.model.state_dict().copy()
-            delta = { k: params[k].cpu() - last_global[k].cpu() for k in params.keys() }
+        # sync with the server
+        mpi.comm.send(('sync', (mpi.rank, update_params)), dest=0)
 
-            mpi.comm.send(('update_global_model', (start, length, params, delta, mpi.rank)), dest=0)
-
-        # reload cache
-        if args.cache > 0:
-            for i in range(args.cache):
-                mpi.comm.send(('get_random_client_model', mpi.rank), dest=0)
-
-                msg, payload = mpi.comm.recv(source=0)
-
-                if msg != 'random_client_model':
-                    raise RuntimeError('unexpected ' + msg)
-
-                model_cache[i].load_state_dict(payload)
-
-        # get schedule step
-        mpi.comm.send(('schedule', mpi.rank), dest=0)
-
+        # receive next work
         msg, payload = mpi.comm.recv(source=0)
 
-        if msg != 'next_schedule':
-            raise RuntimeError('unexpected ' + msg)
+        if msg == 'stop':
+            break
 
-        start, length, global_parameters = payload
-        total_steps = 0
-        updated_model = True # for the next iteration
+        if msg != 'go':
+            raise NotImplementedError('unexpected ' + msg)
 
-        # load new local actor parameters
+        if payload is None:
+            # no work to do, wait a bit
+            time.sleep(0.1)
+            continue
+
+        client = payload['client']
+        steps = payload['steps']
+        params = payload['params'].copy()
+        player = payload['agent']
+        env = payload['env']
+        optimizer_params = payload['optimizer_params']
+
+        # update local model
         if gpu_id >= 0:
             with torch.cuda.device(gpu_id):
-                player.model.load_state_dict(global_parameters)
+                player.model.load_state_dict(params)
         else:
-            player.model.load_state_dict(global_parameters)
+            player.model.load_state_dict(params)
 
-        last_global = global_parameters.copy()
+        total_steps = 0
+        last_global_params = params.copy()
 
         # ensure new parameters are optimized
-        optimizer.param_groups[0]['params'] = player.model.parameters()
+        if args.optimizer == 'RMSprop':
+            optimizer = optim.RMSprop(player.model.parameters(), lr=args.lr)
+        if args.optimizer == 'Adam':
+            optimizer = optim.Adam(
+                player.model.parameters(), lr=args.lr, amsgrad=args.amsgrad)
+        elif args.optimizer == 'SGD':
+            optimizer = optim.SGD(player.model.parameters(), lr=args.lr)
+        else:
+            raise NotImplementedError(args.optimizer)
+
+        # update optimizer state
+        if optimizer_params:
+            optimizer.load_state_dict(optimizer_params.copy())
 
         #print(mpi.rank, 'training for', length)
 
-        while total_steps < length:
+        while total_steps < steps:
 
             if player.done:
                 if gpu_id >= 0:
@@ -106,9 +86,9 @@ def train(args, shared_model, env_conf):
                 player.hx = Variable(player.hx.data)
 
             for step in range(args.num_steps):
-                player.action_train(args, assist_models=model_cache)
+                player.action_train(args)
                 total_steps += 1
-                if player.done or total_steps >= length:
+                if player.done or total_steps >= steps:
                     break
 
             if player.done:
@@ -156,3 +136,16 @@ def train(args, shared_model, env_conf):
             #ensure_shared_grads(player.model, shared_model, gpu=gpu_id >= 0)
             optimizer.step()
             player.clear_actions()
+
+        # set update params for the next sync
+        params = player.model.state_dict().copy()
+        delta_params = { k: params[k].cpu() - last_global_params[k].cpu() for k in params.keys() }
+
+        update_params = {
+            'client': client,
+            'delta_params': delta_params,
+            'agent': player,
+            'env': env,
+            'optimizer_params': optimizer.state_dict()
+        }
+
