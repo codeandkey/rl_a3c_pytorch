@@ -43,35 +43,56 @@ parser.add_argument(
     metavar='T',
     help='parameter for GAE (default: 1.00)')
 parser.add_argument(
+    '--log_interval',
+    type=int,
+    default=60,
+    metavar='L',
+    help='interval between training status logs (seconds)')
+parser.add_argument(
     '--seed',
     type=int,
     default=1,
     metavar='S',
     help='random seed (default: 1)')
 parser.add_argument(
-    '--min_offline_steps',
+    '--steps_min',
     type=int,
     default=20,
     help='lower bound for offline steps (default: 20)')
 parser.add_argument(
-    '--max_offline_steps',
+    '--steps_max',
     type=int,
     default=150,
     help='upper bound for offline steps (default: 150)')
 parser.add_argument(
-    '--offline_sample',
-    default='uniform',
-    help='sampling method for offline steps (uniform | normal)')
-parser.add_argument(
-    '--off_mean',
+    '--steps_mean',
     default=150,
     type=float,
     help='normal mean for offline sampling')
 parser.add_argument(
-    '--off_var',
+    '--delay_min',
+    type=int,
+    default=20,
+    help='lower bound for offline delay (default: 20)')
+parser.add_argument(
+    '--delay_max',
+    type=int,
+    default=150,
+    help='upper bound for offline delay (default: 150)')
+parser.add_argument(
+    '--delay_mean',
+    default=150,
+    type=float,
+    help='normal mean for offline sampling')
+parser.add_argument(
+    '--delay_var',
     default=25,
     type=float,
     help='normal variance for offline sampling')
+parser.add_argument(
+    '--job_name',
+    default='uniform',
+    help='sampling method for offline scheduling (uniform | normal)')
 parser.add_argument(
     '--cache',
     type=int,
