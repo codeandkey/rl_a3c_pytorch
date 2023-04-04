@@ -45,7 +45,7 @@ parser.add_argument(
 parser.add_argument(
     '--log_interval',
     type=int,
-    default=60,
+    default=5,
     metavar='L',
     help='interval between training status logs (seconds)')
 parser.add_argument(
@@ -82,7 +82,7 @@ parser.add_argument(
 parser.add_argument(
     '--max_time',
     type=int,
-    default=100000,
+    default=10000000,
     help='total federation time steps')
 parser.add_argument(
     '--delay_mean',
@@ -199,22 +199,26 @@ parser.add_argument(
 
 parser.add_argument(
     '--steps_per_global',
-    default=200,
+    default=128,
+    type=int,
     help='offline steps allocated per global timestep')
 
 parser.add_argument(
     '--steps_var',
-    default=25,
+    default=128,
+    type=int,
     help='offline steps variance')
 
 parser.add_argument(
     '--min_window',
     default=4,
+    type=int,
     help='minimum client offline window')
 
 parser.add_argument(
     '--max_window',
     default=16,
+    type=int,
     help='maximum client offline window')
 
 parser.add_argument(
@@ -224,7 +228,7 @@ parser.add_argument(
 
 parser.add_argument(
     '--window_var',
-    default=5,
+    default=6,
     help='offline window variance (for normal distribution)')
 
 parser.add_argument(
@@ -287,23 +291,14 @@ if __name__ == '__main__':
         if i in args.env:
             env_conf = setup_json[i]
     env = atari_env(args.env, env_conf, args)
-    shared_model = A3Clstm(env.observation_space.shape[0], env.action_space)
+
     if args.load:
         saved_state = torch.load(
             '{0}{1}.dat'.format(args.load_model_dir, args.env),
             map_location=lambda storage, loc: storage)
-        shared_model.load_state_dict(saved_state)
-    shared_model.share_memory()
-
-    if args.shared_optimizer:
-        if args.optimizer == 'RMSprop':
-            optimizer = SharedRMSprop(shared_model.parameters(), lr=args.lr)
-        if args.optimizer == 'Adam':
-            optimizer = SharedAdam(
-                shared_model.parameters(), lr=args.lr, amsgrad=args.amsgrad)
-        optimizer.share_memory()
-    else:
-        optimizer = None
+    #shared_model.load_state_dict(saved_state)
+    shared_model = None
+    #shared_model.share_memory()
 
     # scheduler thread
     if mpi.rank == 0:

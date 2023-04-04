@@ -47,6 +47,8 @@ def scheduler(args, shared_model, env_conf):
 
             steps = args.steps_per_global * window + \
                     client_rng.integers(step_range) - args.steps_var
+            steps = max(args.min_steps, steps)
+            steps = min(args.max_steps, steps)
         elif args.job_sample == 'normal':
             start_delay = int(args.delay_mean +
                               args.delay_var * client_rng.normal())
@@ -67,7 +69,7 @@ def scheduler(args, shared_model, env_conf):
 
         return {
             'start': current_time + start_delay,
-            'end': current_time + start_delay + steps,
+            'end': current_time + start_delay + window,
             'window': window,
             'steps': steps,
             'status': 'start_pending',
@@ -108,6 +110,8 @@ def scheduler(args, shared_model, env_conf):
             else:
                 raise NotImplementedError(args.merge_wt)
 
+            #print('merging', merge_wt)
+
             # merge the client's update into the global model
             for key in global_parameters.keys():
                 global_parameters[key] = global_parameters[key] + \
@@ -125,6 +129,12 @@ def scheduler(args, shared_model, env_conf):
         pending_result = []  # we need to wait for these jobs to finish before advancing
         pending_start = []  # we need to send these jobs to clients before advancing
 
+        num_pending = 0 # jobs starting on a future time step
+        num_leaving  = 0 # jobs which are leaving on this time step
+        num_joining = 0 # jobs which are joining on this time step
+        num_completed = 0 # the number of jobs which are done, but not joined yet
+        num_running = 0 # jobs which are running, with no result yet
+
         for client in range(args.clients):
             job = jobs[client]
 
@@ -132,16 +142,20 @@ def scheduler(args, shared_model, env_conf):
                 if job['start'] == current_time:
                     # this job is ready to start
                     pending_start.append(client)
+                    num_leaving += 1
                 else:
                     assert current_time < job['start']
+                    num_pending += 1
 
             elif job['status'] == 'running':
                 if job['end'] == current_time:
                     # this job is not complete yet
                     pending_result.append(client)
+                    num_joining += 1
                 else:
                     assert current_time < job['end']
                     assert job['start'] <= current_time
+                    num_running += 1
 
             elif job['status'] == 'completed':
                 if job['end'] == current_time:
@@ -150,17 +164,26 @@ def scheduler(args, shared_model, env_conf):
 
                     # advance the job, don't allow immediate start
                     jobs[client] = next_job(job_rngs[client], current_time + 1)
+
+                    num_joining += 1
                 else:
+                    if job['start'] > current_time:
+                        print('completed job hasnt started yet?')
+                        print('client =', client)
+                        print('t =', current_time)
+                        print(job)
+
                     assert current_time < job['end']
                     assert job['start'] <= current_time
+                    num_completed += 1
 
             else:
                 raise NotImplementedError(job['status'])
 
         # write status log
-        if time.time() - last_log_time > args.log_interval or True:
-            print('t: {}, {} leave, {} join'.format(current_time,
-                len(pending_start), len(pending_result)))
+        if time.time() - last_log_time > args.log_interval and (num_leaving > 0 or num_joining > 0):
+            print('t: {}, {:3d} pending, {:3d} leave, {:3d} join, {:3d} running, {:3d} completed'.format(current_time,
+                num_pending, num_leaving, num_joining, num_running, num_completed))
             last_log_time = time.time()
 
         # if there are no pending jobs, we can advance to the next timestep
@@ -214,6 +237,14 @@ def scheduler(args, shared_model, env_conf):
                         # and wait for the future merge
 
                         # sanity check, this result should be for a future job
+
+                        if current_time < jobs[client]['start']:
+                            print('received result for unstarted job:')
+                            print('client =', client)
+                            print('t =', current_time)
+                            print(jobs[client])
+
+                        assert current_time >= jobs[client]['start']
                         assert current_time < jobs[client]['end']
 
                         # write the job as completed
@@ -240,7 +271,7 @@ def scheduler(args, shared_model, env_conf):
                     new_job_client = pending_start.pop()
                     new_job_params = {
                         'client': new_job_client,
-                        'steps': jobs[new_job_client]['window'],
+                        'steps': jobs[new_job_client]['steps'],
                         'model': global_parameters.copy(),
                         'agent': client_agents[new_job_client],
                         'params': global_parameters.copy(),

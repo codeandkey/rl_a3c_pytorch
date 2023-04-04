@@ -70,6 +70,13 @@ def test(args, shared_model, env_conf):
 
         if msg == 'global_model':
             current_time, global_parameters, total_updates = payload
+
+            # check the parameters actually changed
+
+            pmsd = player.model.state_dict()
+            k1 = list(pmsd.keys())[0]
+            print('test model update diff', global_parameters[k1] - player.model.state_dict()[k1])
+
             player.model.load_state_dict(global_parameters.copy())
             #print('test model updates')
         elif msg == 'stop':
@@ -81,15 +88,6 @@ def test(args, shared_model, env_conf):
         #print('first param', player.model.state_dict()['actor_linear.weight'])
 
         for i in range(args.test_steps):
-            if flag:
-                if gpu_id >= 0:
-                    with torch.cuda.device(gpu_id):
-                        player.model.load_state_dict(shared_model.state_dict())
-                else:
-                    player.model.load_state_dict(shared_model.state_dict())
-                player.model.eval()
-                flag = False
-
             player.action_test()
             reward_sum += player.reward
 

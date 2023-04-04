@@ -37,13 +37,23 @@ def train(args, env_conf):
         if payload is None:
             # no work to do, wait a bit
             time.sleep(0.1)
+
+            # also, don't send duplicate update params
+            update_params = None
             continue
 
         client = payload['client']
         steps = payload['steps']
-        params = payload['params'].copy()
+        global_params = payload['params']
         player = payload['agent']
         optimizer_params = payload['optimizer_params']
+
+        """if player:
+            print('recv agent rewards', player.rewards)
+            print('recv agent log_probs', player.log_probs)
+            print('recv agent entropies', player.entropies)
+            print('recv agent values', player.values)
+            print('recv env', player.env)"""
 
         if not player:
             # the environment is not initialized yet, we do it here
@@ -74,34 +84,33 @@ def train(args, env_conf):
         # update local model
         if gpu_id >= 0:
             with torch.cuda.device(gpu_id):
-                player.model.load_state_dict(params)
+                player.model.load_state_dict(global_params.copy())
         else:
-            player.model.load_state_dict(params)
+            player.model.load_state_dict(global_params.copy())
 
         player.model.train()
 
         total_steps = 0
-        last_global_params = params.copy()
-
-        # ensure new parameters are optimized
-        if args.optimizer == 'RMSprop':
-            optimizer = optim.RMSprop(player.model.parameters(), lr=args.lr)
-        if args.optimizer == 'Adam':
-            optimizer = optim.Adam(
-                player.model.parameters(), lr=args.lr, amsgrad=args.amsgrad)
-        elif args.optimizer == 'SGD':
-            optimizer = optim.SGD(player.model.parameters(), lr=args.lr)
-        else:
-            raise NotImplementedError(args.optimizer)
 
         # update optimizer state
         if optimizer_params:
-            optimizer.load_state_dict(optimizer_params.copy())
+            optimizer = optimizer_params # sketch
+            #print(len(optimizer_params['param_groups']))
+            optimizer.param_groups[0]['params'] = player.model.parameters()
+            #optimizer.load_state_dict(optimizer_params.copy())
+        else:
+            # regen client optimizer
+            if args.optimizer == 'RMSprop':
+                optimizer = optim.RMSprop(player.model.parameters(), lr=args.lr)
+            elif args.optimizer == 'Adam':
+                optimizer = optim.Adam(
+                    player.model.parameters(), lr=args.lr, amsgrad=args.amsgrad)
+            elif args.optimizer == 'SGD':
+                optimizer = optim.SGD(player.model.parameters(), lr=args.lr)
+            else:
+                raise NotImplementedError(args.optimizer)
 
-        # update optimizer parameter group (again)
-        #optimizer.param_groups[0]['params'] = player.model.parameters()
-
-        #print(mpi.rank, 'training for', length)
+        #print(mpi.rank, 'training for', steps)
 
         while total_steps < steps:
 
@@ -170,18 +179,23 @@ def train(args, env_conf):
             player.clear_actions()
 
         # set update params for the next sync
-        params = player.model.state_dict().copy()
-        delta_params = { k: params[k].cpu() - last_global_params[k].cpu() for k in params.keys() }
+        new_params = player.model.state_dict().copy()
+        delta_params = { k: new_params[k].cpu() - global_params[k].cpu() for k in new_params.keys() }
 
         # we can bundle the env with the player, but we remove
         # the model from the player to save bandwidth
 
         player.model = None
 
+        # remove param groups from optimizer
+        optimizer.param_groups[0]['params'] = {}
+
+        #print('sending delta', list(delta_params.keys())[0], delta_params[list(delta_params.keys())[0]])
+
         update_params = {
             'client': client,
             'delta_params': delta_params,
             'agent': player,
-            'optimizer_params': optimizer.state_dict()
+            'optimizer_params': optimizer
         }
 
