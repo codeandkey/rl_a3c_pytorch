@@ -7,6 +7,8 @@ import sys
 from environment import atari_env
 from collections import deque
 
+import time
+
 from model import A3Clstm
 
 def scheduler(args, shared_model, env_conf):
@@ -22,8 +24,14 @@ def scheduler(args, shared_model, env_conf):
     interval_window.append(0)
     interval_window_report = 0
 
+    timestep_width = 1 # seconds
+    start_time = time.process_time()
+    client_windows = [0 for _ in mpi.size - 2]
+
     # wait for messages
     while True:
+        global_age = int((time.process_time() - start_time) / timestep_width)
+
         msg, payload = mpi.comm.recv()
 
         # get the next scheduling step
@@ -115,9 +123,12 @@ def scheduler(args, shared_model, env_conf):
             mean_interval = np.average(interval_window)
             std_interval = np.std(interval_window)
 
-            client_window = (global_age - start)
+            client_window = int((time.process_time() - start_time) / timestep_width)
+            client_windows[source - 2] = client_window
             interval_window.append(client_window)
             interval_window_report += 1
+
+            avg_client_window = sum(client_windows) / len(client_windows)
 
             if interval_window_report % 100 == 0:
                 print('expected interval window', sum(interval_window) / len(interval_window))
@@ -177,7 +188,7 @@ def scheduler(args, shared_model, env_conf):
             elif args.merge_wt == 'discount_poisson':
                 # discount gradients by probability of occurrence
                 if args.age_calc == 'iter':
-                    if global_age - start <= mpi.size - 2:
+                    if global_age - start <= avg_client_window:
                         merge_wt = 1
                     else:
                         # rate = K - 2 (by age increment)
@@ -187,8 +198,8 @@ def scheduler(args, shared_model, env_conf):
                         # otherwise, rescale probability distribution (GIVEN d>(k-2))
 
                         # p(d >= k - 2)
-                        d = global_age - start
-                        rate = mpi.size - 2
+                        d = client_window
+                        rate = avg_client_window
                         p_age = np.exp(-rate) * (rate ** d) / np.math.factorial(d)
                         # poisson pmf
 
