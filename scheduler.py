@@ -26,7 +26,7 @@ def scheduler(args, shared_model, env_conf):
 
     timestep_width = 1 # seconds
     start_time = time.process_time()
-    client_windows = [0 for _ in mpi.size - 2]
+    client_windows = [0 for _ in range(mpi.size - 2)]
 
     # wait for messages
     while True:
