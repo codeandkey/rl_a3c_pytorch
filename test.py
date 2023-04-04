@@ -73,11 +73,15 @@ def test(args, shared_model, env_conf):
 
             # check the parameters actually changed
 
-            pmsd = player.model.state_dict()
+            pmsd = player.model.cpu().state_dict()
             k1 = list(pmsd.keys())[0]
-            print('test model update diff', global_parameters[k1] - player.model.state_dict()[k1])
+            print('test model update diff', global_parameters[k1] - pmsd[k1])
 
             player.model.load_state_dict(global_parameters.copy())
+
+            if gpu_id >= 0:
+                with torch.cuda.device(gpu_id):
+                    player.model.cuda()
             #print('test model updates')
         elif msg == 'stop':
             sys.exit(0)
