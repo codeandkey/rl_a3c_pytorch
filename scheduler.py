@@ -29,6 +29,9 @@ def scheduler(args, shared_model, env_conf):
     global_model = A3Clstm(state_space, action_space)
     global_parameters = global_model.state_dict()
 
+    # cleanup scheduler env
+    del ref_environment
+
     # status log timer
     last_log_time = time.time()
 
@@ -278,6 +281,9 @@ def scheduler(args, shared_model, env_conf):
                         'optimizer_params': client_optimizer_params[new_job_client],
                     }
                     jobs[new_job_client]['status'] = 'running'
+
+                    # avoid excessive memory by removing the cached client agent
+                    client_agents[new_job_client] = None
 
                 mpi.comm.send(('go', new_job_params), dest=source)
 
