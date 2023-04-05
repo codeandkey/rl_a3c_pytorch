@@ -219,6 +219,32 @@ def scheduler(args, shared_model, env_conf):
                     raise RuntimeError('invalid age')
                 #recent_update_age.append(global_age - start)
                 #print('discount', merge_wt)
+            elif args.merge_wt == 'discount_exp':
+                # discount gradients by probability of occurrence
+                if args.age_calc == 'iter':
+                    if global_age - start <= avg_client_window:
+                        merge_wt = 1
+                    else:
+                        # rate = K - 2 (by age increment)
+                        # the update from one is expected every (K - 2) updates
+
+                        # if the update is sooner than expected, we revent to full
+                        # otherwise, rescale probability distribution (GIVEN d>(k-2))
+
+                        # p(d >= k - 2)
+                        d = client_window
+                        rate = avg_client_window
+                        p_age = rate * np.exp(-rate * d)
+                        cdf_old = 1 - np.exp(-rate * avg_client_window)
+
+                        merge_wt = p_age / cdf_old # probability of this client's window,
+                        # given we know it is already old
+
+                        #print('p_is_new', p_is_new, 'p_is_old', p_is_old, 'p_age', p_age, 'rate', rate, 'd', d)
+                else:
+                    raise RuntimeError('invalid age')
+                #recent_update_age.append(global_age - start)
+                print('discount', merge_wt)
             elif args.merge_wt == 'discount_poisson_scaled':
                 # discount gradients by probability of occurrence
                 if args.age_calc != 'iter':
