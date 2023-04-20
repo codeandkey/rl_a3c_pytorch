@@ -123,15 +123,15 @@ def scheduler(args, shared_model, env_conf):
             mean_interval = np.average(interval_window)
             std_interval = np.std(interval_window)
 
-            client_window = int((time.process_time() - start_time) / timestep_width)
+            client_window = global_age - start 
             client_windows[source - 2] = client_window
             interval_window.append(client_window)
             interval_window_report += 1
 
             avg_client_window = sum(client_windows) / len(client_windows)
 
-            if interval_window_report % 100 == 0:
-                print('expected interval window', sum(interval_window) / len(interval_window))
+            #if interval_window_report % 100 == 0:
+                #print('expected interval window', sum(interval_window) / len(interval_window))
 
             # decide merging parameters
             if args.method == 'merge_delta':
@@ -222,7 +222,7 @@ def scheduler(args, shared_model, env_conf):
             elif args.merge_wt == 'discount_exp':
                 # discount gradients by probability of occurrence
                 if args.age_calc == 'iter':
-                    if global_age - start <= avg_client_window:
+                    if client_window <= avg_client_window:
                         merge_wt = 1
                     else:
                         # rate = K - 2 (by age increment)
@@ -233,18 +233,45 @@ def scheduler(args, shared_model, env_conf):
 
                         # p(d >= k - 2)
                         d = client_window
-                        rate = avg_client_window
+                        rate = 1 / avg_client_window
                         p_age = rate * np.exp(-rate * d)
-                        cdf_old = 1 - np.exp(-rate * avg_client_window)
+                        cdf_new = 1 - np.exp(-rate * avg_client_window)
 
-                        merge_wt = p_age / cdf_old # probability of this client's window,
+                        merge_wt = p_age / (1 - cdf_new)# probability of this client's window,
                         # given we know it is already old
 
                         #print('p_is_new', p_is_new, 'p_is_old', p_is_old, 'p_age', p_age, 'rate', rate, 'd', d)
                 else:
                     raise RuntimeError('invalid age')
                 #recent_update_age.append(global_age - start)
-                print('discount', merge_wt)
+                #print('discount', merge_wt, 'client_window', client_window, 'avg_client_window', avg_client_window, 'global_age', global_age, 'start', start)
+            elif args.merge_wt == 'discount_exp2':
+                # discount gradients by probability of occurrence (second formula)
+                if args.age_calc == 'iter':
+                    if client_window <= avg_client_window:
+                        merge_wt = 1
+                    else:
+                        # rate = K - 2 (by age increment)
+                        # the update from one is expected every (K - 2) updates
+
+                        # if the update is sooner than expected, we revent to full
+                        # otherwise, rescale probability distribution (GIVEN d>(k-2))
+
+                        # p(d >= k - 2)
+                        d = client_window
+                        rate = 1 / avg_client_window
+                        p_age = rate * np.exp(-rate * d)
+                        cdf_new = 1 - np.exp(-rate * avg_client_window)
+                        cdf_dk = 1 - np.exp(-rate * d)
+
+                        merge_wt = 1 - ((cdf_dk - cdf_new) / (1 - cdf_new))# probability the client was AT LEAST this old
+                        # given we know it is already old
+
+                        #print('p_is_new', p_is_new, 'p_is_old', p_is_old, 'p_age', p_age, 'rate', rate, 'd', d)
+                else:
+                    raise RuntimeError('invalid age')
+                #recent_update_age.append(global_age - start)
+                print('discount', merge_wt, 'client_window', client_window, 'avg_client_window', avg_client_window, 'global_age', global_age, 'start', start)
             elif args.merge_wt == 'discount_poisson_scaled':
                 # discount gradients by probability of occurrence
                 if args.age_calc != 'iter':
@@ -282,6 +309,8 @@ def scheduler(args, shared_model, env_conf):
                     # given we know it is already old
 
                     #print('p_is_new', p_is_new, 'p_is_old', p_is_old, 'p_age', p_age, 'rate', rate, 'd', d)
+            elif args.merge_wt == 'drop':
+                merge_wt = 1 if client_window <= avg_client_window else 0
             else:
                 raise NotImplementedError(args.merge_wt)
 
